@@ -1,0 +1,9 @@
+# Output files.
+*.bin
+*.bmp
+*.yuv
+
+# MSVC files.
+_msvc/.vs
+Debug
+Release
