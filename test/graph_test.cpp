@@ -5,6 +5,7 @@
 #include "graphengine/filter.h"
 #include "graphengine/graph.h"
 #include "graphengine/types.h"
+
 #include "gtest/gtest.h"
 
 namespace {
@@ -186,6 +187,22 @@ TEST(GraphTest, test_add_transform_bad_dep)
 
 	dep = { source_id, 1 };
 	EXPECT_ANY_THROW(graph.add_transform(&dummy, &dep)) << "{0, 1}";
+}
+
+TEST(GraphTest, test_add_transform_dim_mismatch)
+{
+	graphengine::Graph graph;
+	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
+	graphengine::node_id source_id = graph.add_source(1, &desc);
+
+	graphengine::PlaneDescriptor desc2{ 639, 479, 1 };
+	graphengine::node_id source2_id = graph.add_source(1, &desc2);
+
+	DummyFilter dummy{ 640, 480 };
+	dummy.mutable_descriptor().num_deps = 2;
+
+	graphengine::node_dep_desc deps[] = { { source_id, 0 }, { source2_id, 0 } };
+	EXPECT_ANY_THROW(graph.add_transform(&dummy, deps));
 }
 
 TEST(GraphTest, test_add_sink)
