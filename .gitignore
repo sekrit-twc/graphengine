@@ -4,6 +4,8 @@
 *.yuv
 
 # MSVC files.
+*.suo
+*.vcxproj.user
 _msvc/.vs
 Debug
 Release
