@@ -96,7 +96,7 @@ struct Graph::SimulationResult {
 
 				// External nodes are allocated by the caller.
 				if (!node->sourcesink()) {
-					result.cache_size_bytes[p] = static_cast<size_t>(mask == BUFFER_MAX ? lines : mask + 1) * desc.width * desc.bytes_per_sample;
+					result.cache_size_bytes[p] = static_cast<size_t>(mask == BUFFER_MAX ? desc.height : mask + 1) * desc.width * desc.bytes_per_sample;
 					result.cache_stride[p] = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
 					tmp_size += result.cache_size_bytes[p];
 				}

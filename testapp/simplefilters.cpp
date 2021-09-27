@@ -4,6 +4,15 @@
 #include <stdexcept>
 #include "simplefilters.h"
 
+#ifdef _MSC_VER
+  #include <emmintrin.h>
+  static long xlrintf(float x) { return _mm_cvtss_si32(_mm_set_ss(x)); }
+  static float xsqrtf(float x) { return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x))); }
+#else
+  #define xlrintf lrintf
+  #define xsqrtf sqrtf
+#endif
+
 namespace {
 
 class Spatial3x3Filter : public graphengine::Filter {
@@ -93,8 +102,8 @@ public:
 			int32_t gx = s(y2[x0]) + 2 * y2[x1] + y2[x2] - y0[x0] - 2 * y0[x1] - y0[x2];
 			int32_t gy = s(y0[x2]) + 2 * y1[x2] + y2[x2] - y0[x0] - 2 * y1[x0] - y2[x0];
 
-			float sobel = std::sqrt(static_cast<float>(gx) * gx + static_cast<float>(gy) * gy);
-			dstp[j] = static_cast<uint8_t>(std::lrintf(std::min(sobel, 255.0f)));
+			float sobel = xsqrtf(static_cast<float>(gx) * gx + static_cast<float>(gy) * gy);
+			dstp[j] = static_cast<uint8_t>(xlrintf(std::min(sobel, 255.0f)));
 		}
 	}
 };
