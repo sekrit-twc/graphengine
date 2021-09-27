@@ -8,6 +8,7 @@
 
 namespace graphengine {
 
+class Simulation;
 class FrameState;
 
 class Filter;
@@ -26,17 +27,28 @@ public:
 
 	node_id id() const { return m_id; }
 
+	// Informational methods.
 	virtual bool sourcesink() const noexcept = 0;
+
+	virtual unsigned subsample_w(unsigned plane) const noexcept = 0;
+
+	virtual unsigned subsample_h(unsigned plane) const noexcept = 0;
 
 	virtual unsigned num_planes() const noexcept = 0;
 
 	virtual PlaneDescriptor format(unsigned plane) const noexcept = 0;
 
-	virtual void initialize_frame_state(FrameState *state) const noexcept = 0;
+	// Analysis methods used internally by Graph.
+	virtual void trace_working_memory(Simulation *sim) const noexcept = 0;
+
+	virtual void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned plane) const noexcept = 0;
+
+	// Setup method called before Node::process.
+	virtual void begin_frame(FrameState *state, unsigned plane) const noexcept = 0;
 
 	// |plane| is used to translate row offsets of subsampled sources.
 	// All node planes are processed on every call. Transform nodes are never subsampled.
-	virtual void process(FrameState *state, unsigned last, unsigned plane) const = 0;
+	virtual void process(FrameState *state, unsigned last_row, unsigned plane) const = 0;
 };
 
 

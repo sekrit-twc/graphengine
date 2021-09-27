@@ -14,6 +14,8 @@ namespace graphengine {
 
 class Filter;
 class Node;
+class Simulation;
+class FrameState;
 
 class Graph {
 public:
@@ -66,8 +68,12 @@ public:
 	typedef std::array<Endpoint, GRAPH_MAX_ENDPOINTS> EndpointConfiguration;
 	typedef std::array<std::pair<node_id, unsigned>, GRAPH_MAX_ENDPOINTS> BufferingRequirement;
 private:
+	struct SimulationResult;
+
 	std::vector<std::unique_ptr<Node>> m_nodes;
 	std::vector<node_id> m_source_ids;
+	std::unique_ptr<SimulationResult> m_simulation;
+
 	node_id m_sink_id = null_node;
 
 	node_id next_node_id() const;
@@ -81,6 +87,8 @@ private:
 	void add_node(std::unique_ptr<Node> node);
 
 	void compile();
+
+	FrameState prepare_frame_state(const EndpointConfiguration &endpoints, void *tmp) const;
 public:
 	Graph();
 
