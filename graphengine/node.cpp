@@ -76,6 +76,8 @@ public:
 
 	PlaneDescriptor format(unsigned plane) const noexcept { return m_desc[plane]; }
 
+	void apply_node_fusion() noexcept override {}
+
 	void trace_working_memory(Simulation *sim) const noexcept override {}
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned plane) const noexcept override
@@ -87,7 +89,8 @@ public:
 		last_row <<= m_subsample_h[plane];
 		last_row = last_row % m_step ? last_row + (m_step - last_row % m_step) : last_row;
 
-		sim->update_live_range(id(), first_row, last_row);
+		sim->update_cursor_range(id(), first_row, last_row);
+		sim->update_live_range(id(), id(), first_row, last_row);
 	}
 
 	void begin_frame(FrameState *state, unsigned plane) const noexcept override {}
@@ -150,6 +153,17 @@ public:
 
 	PlaneDescriptor format(unsigned plane) const noexcept { return m_parents[plane].first->format(m_parents[plane].second); }
 
+	void apply_node_fusion() noexcept override
+	{
+		for (unsigned p = 0; p < m_num_planes; ++p) {
+			assert(m_parents[p].first->ref_count(m_parents[p].second) == 1);
+			m_parents[p].first->set_cache_location(m_parents[p].second, id(), p);
+		}
+		for (unsigned p = 0; p < m_num_planes; ++p) {
+			m_parents[p].first->apply_node_fusion();
+		}
+	}
+
 	void trace_working_memory(Simulation *sim) const noexcept override
 	{
 		for (unsigned p = 0; p < m_num_planes; ++p) {
@@ -166,14 +180,15 @@ public:
 
 		// Walk through parents.
 		unsigned cursor = sim->cursor(id(), first_row);
-		cursor = sim->is_live(id(), first_row) ? cursor : first_row;
+		cursor = sim->is_live(id(), id(), first_row) ? cursor : first_row;
 
 		for (; cursor < last_row; cursor += m_step) {
 			for (unsigned p = 0; p < m_num_planes; ++p) {
 				m_parents[p].first->trace_access_pattern(sim, cursor >> m_subsample_h[p], (cursor + m_step) >> m_subsample_h[p], m_parents[p].second);
 			}
 		}
-		sim->update_live_range(id(), first_row, cursor);
+		sim->update_cursor_range(id(), first_row, cursor);
+		sim->update_live_range(id(), id(), first_row, cursor);
 	}
 
 	void begin_frame(FrameState *state, unsigned plane) const noexcept override
@@ -190,14 +205,6 @@ public:
 		for (; cursor < last_row; cursor += m_step) {
 			for (unsigned p = 0; p < m_num_planes; ++p) {
 				m_parents[p].first->process(state, (cursor + m_step) >> m_subsample_h[p], p);
-
-				BufferDescriptor in = state->buffer(m_parents[p].first->id(), m_parents[p].second);
-				BufferDescriptor out = state->buffer(id(), p);
-				size_t rowsize = static_cast<size_t>(format(p).width) * format(p).bytes_per_sample;
-
-				for (unsigned i = cursor >> m_subsample_h[p]; i < (cursor + m_step) >> m_subsample_h[p]; ++i) {
-					std::copy_n(static_cast<const uint8_t *>(in.get_line(i)), rowsize, static_cast<uint8_t *>(out.get_line(i)));
-				}
 			}
 
 			if (Graph::Callback callback = state->callback(id()))
@@ -240,7 +247,48 @@ public:
 
 	unsigned num_planes() const noexcept override { return m_filter_desc->num_planes; }
 
-	PlaneDescriptor format(unsigned plane) const noexcept { return m_filter_desc->format; }
+	PlaneDescriptor format(unsigned) const noexcept { return m_filter_desc->format; }
+
+	void apply_node_fusion() noexcept override
+	{
+		if (m_filter_desc->flags.in_place) {
+			bool plane_used[FILTER_MAX_PLANES] = {};
+
+			size_t self_rowsize = static_cast<size_t>(m_filter_desc->format.width) * m_filter_desc->format.bytes_per_sample;
+			unsigned self_height = m_filter_desc->format.height;
+
+			// Scan backwards to optimize for LRU.
+			for (unsigned parent = m_filter_desc->num_deps; parent != 0; --parent) {
+				node_dep dep = m_parents[parent - 1];
+				if (dep.first->sourcesink() || dep.first->ref_count(dep.second) > 1)
+					continue;
+
+				// Already fused.
+				if (dep.first->cache_location(dep.second) != std::make_pair(dep.first->id(), dep.second))
+					continue;
+
+				// Buffer size mismatch.
+				PlaneDescriptor dep_format = dep.first->format(dep.second);
+				size_t dep_rowsize = static_cast<size_t>(dep_format.width) * dep_format.bytes_per_sample;
+				if (dep_rowsize != self_rowsize || dep_format.height != self_height)
+					continue;
+
+				// Search for an unfused output plane.
+				for (unsigned plane = 0; plane < m_filter_desc->num_planes; ++plane) {
+					if (!plane_used[plane]) {
+						auto location = cache_location(plane);
+						dep.first->set_cache_location(dep.second, location.first, location.second);
+						plane_used[plane] = true;
+						break;
+					}
+				}
+			}
+		}
+
+		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
+			m_parents[p].first->apply_node_fusion();
+		}
+	}
 
 	void trace_working_memory(Simulation *sim) const noexcept override
 	{
@@ -253,7 +301,7 @@ public:
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned) const noexcept override
 	{
 		unsigned cursor = sim->cursor(id(), first_row);
-		cursor = sim->is_live(id(), first_row) ? cursor : first_row;
+		cursor = sim->is_live(id(), cache_location(0).first, first_row) ? cursor : first_row;
 
 		for (; cursor < last_row; cursor += std::min(m_filter_desc->format.height - cursor, m_filter_desc->step)) {
 			auto range = m_filter->get_row_deps(cursor);
@@ -262,7 +310,11 @@ public:
 				m_parents[p].first->trace_access_pattern(sim, range.first, range.second, m_parents[p].second);
 			}
 		}
-		sim->update_live_range(id(), first_row, cursor);
+
+		sim->update_cursor_range(id(), first_row, cursor);
+		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
+			sim->update_live_range(id(), cache_location(p).first, first_row, cursor);
+		}
 	}
 
 	void begin_frame(FrameState *state, unsigned) const noexcept override
@@ -285,8 +337,15 @@ public:
 
 		// Gather dependencies.
 		BufferDescriptor inputs[FILTER_MAX_DEPS];
+		BufferDescriptor outputs[FILTER_MAX_PLANES];
+
 		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-			inputs[p] = state->buffer(m_parents[p].first->id(), m_parents[p].second);
+			auto parent_cache = m_parents[p].first->cache_location(m_parents[p].second);
+			inputs[p] = state->buffer(parent_cache.first, parent_cache.second);
+		}
+		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
+			auto self_cache = cache_location(p);
+			outputs[p] = state->buffer(self_cache.first, self_cache.second);
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
@@ -298,7 +357,7 @@ public:
 			}
 
 			// Invoke filter.
-			m_filter->process(inputs, &state->buffer(id(), 0), cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+			m_filter->process(inputs, outputs, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
 		}
 
 		state->set_cursor(id(), cursor);

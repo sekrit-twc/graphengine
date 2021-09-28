@@ -35,10 +35,11 @@ public:
 		m_step{ 1 }
 	{}
 
-	bool is_live(node_id id, unsigned row) const
+	bool is_live(node_id id, node_id cache_id, unsigned row) const
 	{
-		const node_state &s = m_node_state[id];
-		return s.cursor_valid && row >= s.cursor - s.live_range;
+		const node_state &state = m_node_state[id];
+		const node_state &cache_state = m_node_state[cache_id];
+		return state.cursor_valid && row >= state.cursor - cache_state.live_range;
 	}
 
 	unsigned cursor(node_id id, unsigned uninitialized_value) const
@@ -62,7 +63,7 @@ public:
 		m_scratchpad_size = std::max(m_scratchpad_size, scratchpad);
 	}
 
-	void update_live_range(node_id id, unsigned first, unsigned last)
+	void update_cursor_range(node_id id, unsigned first, unsigned last)
 	{
 		node_state &s = m_node_state[id];
 
@@ -74,7 +75,13 @@ public:
 
 		s.cursor = std::max(s.cursor, last);
 		s.cursor_min = std::min(s.cursor_min, first);
-		s.live_range = std::max(s.live_range, s.cursor - first);
+	}
+
+	void update_live_range(node_id id, node_id cache_id, unsigned first, unsigned last)
+	{
+		node_state &state = m_node_state[id];
+		node_state &cache_state = m_node_state[cache_id];
+		cache_state.live_range = std::max(cache_state.live_range, std::max(state.cursor, last) - first);
 	}
 
 	void update_step(unsigned step) { m_step = std::max(m_step, step); }

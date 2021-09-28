@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -55,6 +56,36 @@ unsigned ceil_log2(unsigned count) noexcept
 
 	return std::numeric_limits<unsigned>::digits - lzcnt;
 }
+
+class CopyFilter final : public Filter {
+	FilterDescriptor m_desc;
+public:
+	explicit CopyFilter(const PlaneDescriptor &desc) : m_desc{}
+	{
+		m_desc.format = desc;
+		m_desc.num_deps = 1;
+		m_desc.num_planes = 1;
+		m_desc.step = 1;
+		m_desc.flags.in_place = true;
+	}
+
+	const FilterDescriptor &descriptor() const noexcept override { return m_desc; }
+
+	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
+
+	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept override { return{ left, right }; }
+
+	void init_context(void *) const noexcept override {}
+
+	void process(const BufferDescriptor *in, const BufferDescriptor *out, unsigned i, unsigned left, unsigned right, void *, void *) const noexcept override
+	{
+		const uint8_t *src_ptr = static_cast<const uint8_t *>(in->get_line(i));
+		uint8_t *dst_ptr = static_cast<uint8_t *>(out->get_line(i));
+		src_ptr += static_cast<size_t>(left) * m_desc.format.bytes_per_sample;
+		dst_ptr += static_cast<size_t>(left) * m_desc.format.bytes_per_sample;
+		std::memcpy(dst_ptr, src_ptr, static_cast<size_t>(right - left) * m_desc.format.bytes_per_sample);
+	}
+};
 
 } // namespace
 
@@ -184,6 +215,8 @@ void Graph::compile(Simulation *sim) noexcept
 	Node *sink = lookup_node(m_sink_id);
 	assert(sink);
 
+	sink->apply_node_fusion();
+
 	// Lookup the per-filter memory requirements.
 	sink->trace_working_memory(sim);
 
@@ -274,8 +307,7 @@ node_id Graph::add_source(unsigned num_planes, const PlaneDescriptor desc[])
 		validate_plane_desc(desc[p]);
 	}
 
-	reserve_next_node();
-	m_source_ids.reserve(m_source_ids.size() + 1);
+	m_source_ids.reserve(GRAPH_MAX_ENDPOINTS - 1);
 
 	std::unique_ptr<Node> node = make_source_node(next_node_id(), num_planes, desc);
 	node_id id = node->id();
@@ -306,7 +338,6 @@ node_id Graph::add_transform(const Filter *filter, const node_dep_desc deps[])
 			throw std::runtime_error{ "must have identical dimensions across all dependencies" };
 	}
 
-	reserve_next_node();
 	std::unique_ptr<Node> node = make_transform_node(next_node_id(), filter, resolved_deps.data());
 	node_id id = node->id();
 	add_node(std::move(node));
@@ -327,32 +358,56 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 	if (m_sink_id >= 0)
 		throw std::invalid_argument{ "sink already set" };
 
-	auto resolved_deps = resolve_node_deps(num_planes, deps);
+	auto original_resolved_deps = resolve_node_deps(num_planes, deps);
+	size_t original_node_count = m_nodes.size();
 
-	reserve_next_node();
-
-	std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
-	node_id id = node->id();
-	add_node(std::move(node));
-	m_sink_id = id;
-
+	auto resolved_deps = original_resolved_deps;
 	std::unique_ptr<Simulation> sim;
 
 	try {
+		for (unsigned p = 0; p < num_planes; ++p) {
+			// Sink node does not copy anything. Insert copy filters where needed.
+			if (!resolved_deps[p].first->sourcesink() && resolved_deps[p].first->ref_count(resolved_deps[p].second) == 0)
+				continue;
+
+			node_dep_desc copy_deps[FILTER_MAX_DEPS] = { deps[p] };
+			auto filter = std::make_unique<CopyFilter>(resolved_deps[p].first->format(resolved_deps[p].second));
+
+			node_id copy_id = add_transform(filter.get(), copy_deps);
+			m_copy_filters[p] = std::move(filter);
+			resolved_deps[p].first = m_nodes.back().get();
+			resolved_deps[p].second = 0;
+		}
+
+		std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
+		node_id id = node->id();
+		add_node(std::move(node));
+		m_sink_id = id;
+
 		// Compilation is irreversible. Run any steps that could fail upfront.
 		sim = begin_compile();
 	} catch (...) {
-		m_nodes.pop_back();
+		m_simulation_result.reset();
+		m_nodes.resize(original_node_count);
 		m_sink_id = null_node;
+
+		// Destroy all copy filters.
+		for (unsigned p = NODE_MAX_PLANES; p != 0; --p) {
+			if (m_copy_filters[p - 1]) {
+				original_resolved_deps[p - 1].first->dec_ref(original_resolved_deps[p - 1].second);
+				m_copy_filters[p - 1].reset();
+			}
+		}
 		throw;
 	}
 
+	// All steps that could fail have completed.
 	for (unsigned p = 0; p < num_planes; ++p) {
 		resolved_deps[p].first->add_ref(resolved_deps[p].second);
 	}
 
 	compile(sim.get());
-	return id;
+	return m_sink_id;
 }
 
 size_t Graph::get_tmp_size() const

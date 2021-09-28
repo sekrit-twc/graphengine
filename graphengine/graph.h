@@ -70,6 +70,7 @@ public:
 private:
 	struct SimulationResult;
 
+	std::unique_ptr<Filter> m_copy_filters[NODE_MAX_PLANES];
 	std::vector<std::unique_ptr<Node>> m_nodes;
 	std::vector<node_id> m_source_ids;
 	std::unique_ptr<SimulationResult> m_simulation_result;
