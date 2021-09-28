@@ -65,7 +65,10 @@ public:
 		const uint8_t *y2 = static_cast<const uint8_t *>(in->get_line(range.second - 1));
 		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
 
-		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(right); ++j) {
+		unsigned vec_left = (std::max(left, 1U) + 7U) & ~7U;
+		unsigned vec_right = std::min(right, m_desc.format.width - 1U) & ~7U;
+
+		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(vec_left); ++j) {
 			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
 			ptrdiff_t x1 = j;
 			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
@@ -74,6 +77,45 @@ public:
 			accum = y0[x0] + y0[x1] + y0[x2] +
 			        y1[x0] + y1[x1] + y1[x2] +
 			        y2[x0] + y2[x1] + y2[x2];
+			dstp[j] = (accum + 4) / 9;
+		}
+
+		for (ptrdiff_t j = vec_left; j < static_cast<ptrdiff_t>(vec_right); j += 8) {
+			__m128i v00 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j - 1)), _mm_setzero_si128());
+			__m128i v01 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 0)), _mm_setzero_si128());
+			__m128i v02 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 1)), _mm_setzero_si128());
+			__m128i v10 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y1 + j - 1)), _mm_setzero_si128());
+			__m128i v11 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y1 + j + 0)), _mm_setzero_si128());
+			__m128i v12 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y1 + j + 1)), _mm_setzero_si128());
+			__m128i v20 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y2 + j - 1)), _mm_setzero_si128());
+			__m128i v21 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y2 + j + 0)), _mm_setzero_si128());
+			__m128i v22 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y2 + j + 1)), _mm_setzero_si128());
+
+			__m128i sum = _mm_add_epi16(v00, v01);
+			sum = _mm_add_epi16(sum, v02);
+			sum = _mm_add_epi16(sum, v10);
+			sum = _mm_add_epi16(sum, v11);
+			sum = _mm_add_epi16(sum, v12);
+			sum = _mm_add_epi16(sum, v20);
+			sum = _mm_add_epi16(sum, v21);
+			sum = _mm_add_epi16(sum, v22);
+			sum = _mm_add_epi16(sum, _mm_set1_epi16(4));
+
+			__m128i val = _mm_mulhi_epu16(sum, _mm_set1_epi16(58255));
+			val = _mm_srli_epi16(val, 3);
+			val = _mm_packus_epi16(val, val);
+			_mm_storel_epi64((__m128i *)(dstp + j), val);
+		}
+
+		for (ptrdiff_t j = vec_right; j < static_cast<ptrdiff_t>(right); ++j) {
+			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
+			ptrdiff_t x1 = j;
+			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
+
+			uint32_t accum = 0;
+			accum = y0[x0] + y0[x1] + y0[x2] +
+				y1[x0] + y1[x1] + y1[x2] +
+				y2[x0] + y2[x1] + y2[x2];
 			dstp[j] = (accum + 4) / 9;
 		}
 	}
@@ -92,9 +134,63 @@ public:
 		const uint8_t *y2 = static_cast<const uint8_t *>(in->get_line(range.second - 1));
 		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
 
+		unsigned vec_left = (std::max(left, 1U) + 7U) & ~7U;
+		unsigned vec_right = std::min(right, m_desc.format.width - 1U) & ~7U;
+
 		auto s = [](uint8_t x) { return static_cast<int32_t>(x); };
 
-		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(right); ++j) {
+		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(vec_left); ++j) {
+			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
+			ptrdiff_t x1 = j;
+			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
+
+			int32_t gx = s(y2[x0]) + 2 * y2[x1] + y2[x2] - y0[x0] - 2 * y0[x1] - y0[x2];
+			int32_t gy = s(y0[x2]) + 2 * y1[x2] + y2[x2] - y0[x0] - 2 * y1[x0] - y2[x0];
+
+			float sobel = xsqrtf(static_cast<float>(gx) * gx + static_cast<float>(gy) * gy);
+			dstp[j] = static_cast<uint8_t>(xlrintf(std::min(sobel, 255.0f)));
+		}
+
+		for (ptrdiff_t j = vec_left; j < static_cast<ptrdiff_t>(vec_right); j += 8) {
+			__m128i v00 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j - 1)), _mm_setzero_si128());
+			__m128i v01 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 0)), _mm_setzero_si128());
+			__m128i v02 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 1)), _mm_setzero_si128());
+			__m128i v10 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y1 + j - 1)), _mm_setzero_si128());
+			__m128i v11 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y1 + j + 0)), _mm_setzero_si128());
+			__m128i v12 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y1 + j + 1)), _mm_setzero_si128());
+			__m128i v20 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y2 + j - 1)), _mm_setzero_si128());
+			__m128i v21 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y2 + j + 0)), _mm_setzero_si128());
+			__m128i v22 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y2 + j + 1)), _mm_setzero_si128());
+
+			__m128i v22_sub_v00 = _mm_sub_epi16(v22, v00);
+
+			__m128i gx = _mm_add_epi16(_mm_add_epi16(v20, _mm_add_epi16(v21, v21)), v22_sub_v00); // gx = v20 + 2 * v21 + v22 - v00
+			gx = _mm_sub_epi16(_mm_sub_epi16(gx, _mm_add_epi16(v01, v01)), v02);                  //    - 2 * v01 - v02
+
+			__m128i gy = _mm_add_epi16(_mm_add_epi16(v02, _mm_add_epi16(v12, v12)), v22_sub_v00); // gy = v02 + 2 * v12 + v22 - v00
+			gy = _mm_sub_epi16(_mm_sub_epi16(gy, _mm_add_epi16(v10, v10)), v20);                  //    - 2 * v10 - v20
+
+			__m128i gx_lo = _mm_unpacklo_epi16(gx, _mm_setzero_si128());
+			__m128i gx_hi = _mm_unpackhi_epi16(gx, _mm_setzero_si128());
+			__m128i gy_lo = _mm_unpacklo_epi16(gy, _mm_setzero_si128());
+			__m128i gy_hi = _mm_unpackhi_epi16(gy, _mm_setzero_si128());
+
+			__m128 gx_lo_f32 = _mm_cvtepi32_ps(gx_lo);
+			__m128 gy_lo_f32 = _mm_cvtepi32_ps(gy_lo);
+			__m128 lo_f32 = _mm_sqrt_ps(_mm_add_ps(_mm_mul_ps(gx_lo_f32, gx_lo_f32), _mm_mul_ps(gy_lo_f32, gy_lo_f32)));
+
+			__m128 gx_hi_f32 = _mm_cvtepi32_ps(gx_hi);
+			__m128 gy_hi_f32 = _mm_cvtepi32_ps(gy_hi);
+			__m128 hi_f32 = _mm_sqrt_ps(_mm_add_ps(_mm_mul_ps(gx_hi_f32, gx_hi_f32), _mm_mul_ps(gy_hi_f32, gy_hi_f32)));
+
+			__m128i lo = _mm_cvtps_epi32(lo_f32);
+			__m128i hi = _mm_cvtps_epi32(hi_f32);
+			__m128i out = _mm_packs_epi32(lo, hi);
+			out = _mm_packus_epi16(out, out);
+			_mm_storel_epi64((__m128i *)(dstp + j), out);
+		}
+
+		for (ptrdiff_t j = vec_right; j < static_cast<ptrdiff_t>(right); ++j) {
 			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
 			ptrdiff_t x1 = j;
 			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
@@ -141,7 +237,30 @@ public:
 		const uint8_t *mask = static_cast<const uint8_t *>(in[2].get_line(i));
 		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
 
-		for (unsigned j = left; j < right; ++j) {
+		unsigned vec_left = (left + 7U) & ~7U;
+		unsigned vec_right = right & ~7U;
+
+		for (unsigned j = left; j < vec_left; ++j) {
+			unsigned maskval = mask[j];
+			unsigned invmaskval = 255 - maskval;
+			unsigned result = maskval * src1[j] + invmaskval * src2[j];
+			dstp[j] = static_cast<uint8_t>((result + 127) / 255);
+		}
+
+		for (unsigned j = vec_left; j < vec_right; j += 8) {
+			__m128i src1val = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(src1 + j)), _mm_setzero_si128());
+			__m128i src2val = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(src2 + j)), _mm_setzero_si128());
+			__m128i maskval = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(mask + j)), _mm_setzero_si128());
+			__m128i invmask = _mm_sub_epi16(_mm_set1_epi16(255), maskval);
+
+			__m128i val = _mm_add_epi16(_mm_mullo_epi16(src1val, maskval), _mm_mullo_epi16(src2val, invmask));
+			val = _mm_mulhi_epu16(val, _mm_set1_epi16(0x8081));
+			val = _mm_srli_epi16(val, 7);
+			val = _mm_packus_epi16(val, val);
+			_mm_storel_epi64((__m128i *)(dstp + j), val);
+		}
+
+		for (unsigned j = vec_right; j < right; ++j) {
 			unsigned maskval = mask[j];
 			unsigned invmaskval = 255 - maskval;
 			unsigned result = maskval * src1[j] + invmaskval * src2[j];
