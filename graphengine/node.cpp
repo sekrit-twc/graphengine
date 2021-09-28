@@ -44,6 +44,7 @@ unsigned calculate_subsampling_ratios(unsigned num_planes, const PlaneDescriptor
 
 class SourceNode : public Node {
 	PlaneDescriptor m_desc[NODE_MAX_PLANES] = {};
+	unsigned m_ref_count[NODE_MAX_PLANES] = {};
 	unsigned m_num_planes;
 	unsigned m_step = 1;
 	unsigned m_subsample_w[NODE_MAX_PLANES] = {};
@@ -58,6 +59,12 @@ public:
 		std::copy_n(desc, num_planes, m_desc);
 		m_step = calculate_subsampling_ratios(m_num_planes, m_desc, m_subsample_w, m_subsample_h);
 	}
+
+	unsigned ref_count(unsigned plane) const noexcept override { return m_ref_count[plane]; }
+
+	void add_ref(unsigned plane) noexcept override { assert(plane < m_num_planes); ++m_ref_count[plane]; }
+
+	void dec_ref(unsigned plane) noexcept override { assert(m_ref_count[plane]); --m_ref_count[plane]; }
 
 	bool sourcesink() const noexcept override { return true; }
 
@@ -126,6 +133,12 @@ public:
 		}
 		m_step = calculate_subsampling_ratios(m_num_planes, desc, m_subsample_w, m_subsample_h);
 	}
+
+	unsigned ref_count(unsigned plane) const noexcept override { return 1; }
+
+	void add_ref(unsigned plane) noexcept override {}
+
+	void dec_ref(unsigned plane) noexcept override {}
 
 	bool sourcesink() const noexcept override { return true; }
 
@@ -200,6 +213,7 @@ class TransformNode : public Node {
 	const Filter *m_filter;
 	const FilterDescriptor *m_filter_desc;
 	node_dep m_parents[FILTER_MAX_DEPS] = {};
+	unsigned m_ref_count[FILTER_MAX_PLANES] = {};
 public:
 	TransformNode(node_id id, const Filter *filter, const node_dep deps[]) :
 		Node{ id },
@@ -211,6 +225,12 @@ public:
 		assert(m_filter_desc->num_planes <= FILTER_MAX_DEPS);
 		std::copy_n(deps, m_filter_desc->num_deps, m_parents);
 	}
+
+	unsigned ref_count(unsigned plane) const noexcept override { return m_ref_count[plane]; }
+
+	void add_ref(unsigned plane) noexcept override { assert(plane < m_filter_desc->num_planes); ++m_ref_count[plane]; }
+
+	void dec_ref(unsigned plane) noexcept override { assert(m_ref_count[plane]); --m_ref_count[plane]; }
 
 	bool sourcesink() const noexcept override { return false; }
 

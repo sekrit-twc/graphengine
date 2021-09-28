@@ -72,7 +72,7 @@ private:
 
 	std::vector<std::unique_ptr<Node>> m_nodes;
 	std::vector<node_id> m_source_ids;
-	std::unique_ptr<SimulationResult> m_simulation;
+	std::unique_ptr<SimulationResult> m_simulation_result;
 
 	node_id m_sink_id = null_node;
 
@@ -86,7 +86,9 @@ private:
 
 	void add_node(std::unique_ptr<Node> node);
 
-	void compile();
+	std::unique_ptr<Simulation> begin_compile();
+
+	void compile(Simulation *sim) noexcept;
 
 	FrameState prepare_frame_state(const EndpointConfiguration &endpoints, void *tmp) const;
 public:

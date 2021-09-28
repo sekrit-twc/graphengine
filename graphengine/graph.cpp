@@ -72,11 +72,14 @@ struct Graph::SimulationResult {
 	size_t tmp_size;
 	unsigned step;
 
-	explicit SimulationResult(const Graph &graph, const Simulation &sim) :
-		nodes(graph.m_nodes.size()),
-		tmp_size{},
-		step{ sim.step() }
+	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), tmp_size{}, step{} {}
+
+	void init(const Graph &graph, const Simulation &sim) noexcept
 	{
+		assert(nodes.size() == graph.m_nodes.size());
+
+		step = sim.step();
+
 		for (const auto &node : graph.m_nodes) {
 			node_id id = node->id();
 			node_result &result = nodes[id];
@@ -168,15 +171,21 @@ void Graph::add_node(std::unique_ptr<Node> node)
 	m_nodes.push_back(std::move(node));
 }
 
-void Graph::compile()
+std::unique_ptr<Simulation> Graph::begin_compile()
 {
-	std::unique_ptr<Simulation> sim = std::make_unique<Simulation>(m_nodes.size());
+	m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
+	return std::make_unique<Simulation>(m_nodes.size());
+}
+
+void Graph::compile(Simulation *sim) noexcept
+{
+	assert(m_simulation_result);
 
 	Node *sink = lookup_node(m_sink_id);
 	assert(sink);
 
 	// Lookup the per-filter memory requirements.
-	sink->trace_working_memory(sim.get());
+	sink->trace_working_memory(sim);
 
 	// Calculate the subsampling factor.
 	unsigned sink_planes = sink->num_planes();
@@ -191,10 +200,10 @@ void Graph::compile()
 	// Trace the scanline dependency pattern.
 	for (unsigned i = 0; i < height; i += sim->step()) {
 		unsigned next = height - i < sim->step() ? height : i + sim->step();
-		sink->trace_access_pattern(sim.get(), i, next, 0);
+		sink->trace_access_pattern(sim, i, next, 0);
 	}
 
-	m_simulation = std::make_unique<SimulationResult>(*this, *sim);
+	m_simulation_result->init(*this, *sim);
 }
 
 FrameState Graph::prepare_frame_state(const EndpointConfiguration &endpoints, void *tmp) const
@@ -210,12 +219,12 @@ FrameState Graph::prepare_frame_state(const EndpointConfiguration &endpoints, vo
 
 	// Initialize cursors.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		state.set_cursor(static_cast<node_id>(i), m_simulation->nodes[i].initial_cursor);
+		state.set_cursor(static_cast<node_id>(i), m_simulation_result->nodes[i].initial_cursor);
 	}
 
 	// Allocate caches.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		const SimulationResult::node_result &node_sim = m_simulation->nodes[i];
+		const SimulationResult::node_result &node_sim = m_simulation_result->nodes[i];
 		unsigned num_planes = lookup_node(static_cast<node_id>(i))->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
@@ -233,7 +242,7 @@ FrameState Graph::prepare_frame_state(const EndpointConfiguration &endpoints, vo
 	// Allocate filter contexts.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
 		unsigned char *context_data = nullptr;
-		allocate(context_data, m_simulation->nodes[i].context_size);
+		allocate(context_data, m_simulation_result->nodes[i].context_size);
 
 		state.set_context(static_cast<node_id>(i), context_data);
 	}
@@ -301,6 +310,11 @@ node_id Graph::add_transform(const Filter *filter, const node_dep_desc deps[])
 	std::unique_ptr<Node> node = make_transform_node(next_node_id(), filter, resolved_deps.data());
 	node_id id = node->id();
 	add_node(std::move(node));
+
+	for (unsigned p = 0; p < desc.num_deps; ++p) {
+		resolved_deps[p].first->add_ref(resolved_deps[p].second);
+	}
+
 	return id;
 }
 
@@ -322,20 +336,28 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 	add_node(std::move(node));
 	m_sink_id = id;
 
+	std::unique_ptr<Simulation> sim;
+
 	try {
-		compile();
+		// Compilation is irreversible. Run any steps that could fail upfront.
+		sim = begin_compile();
 	} catch (...) {
 		m_nodes.pop_back();
 		m_sink_id = null_node;
 		throw;
 	}
 
+	for (unsigned p = 0; p < num_planes; ++p) {
+		resolved_deps[p].first->add_ref(resolved_deps[p].second);
+	}
+
+	compile(sim.get());
 	return id;
 }
 
 size_t Graph::get_tmp_size() const
 {
-	return FrameState::metadata_size(m_nodes.size()) + m_simulation->tmp_size;
+	return FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size;
 }
 
 Graph::BufferingRequirement Graph::get_buffering_requirement() const
@@ -355,7 +377,7 @@ Graph::BufferingRequirement Graph::get_buffering_requirement() const
 		unsigned buffering = 0;
 
 		for (unsigned p = 0; p < planes; ++p) {
-			buffering = std::max(buffering, m_simulation->nodes[id].cache_mask[p]);
+			buffering = std::max(buffering, m_simulation_result->nodes[id].cache_mask[p]);
 		}
 		return buffering;
 	};

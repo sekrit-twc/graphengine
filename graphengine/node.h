@@ -27,6 +27,13 @@ public:
 
 	node_id id() const { return m_id; }
 
+	// Reference counting.
+	virtual unsigned ref_count(unsigned plane) const noexcept = 0;
+
+	virtual void add_ref(unsigned plane) noexcept = 0;
+
+	virtual void dec_ref(unsigned plane) noexcept = 0;
+
 	// Informational methods.
 	virtual bool sourcesink() const noexcept = 0;
 
