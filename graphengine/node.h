@@ -60,6 +60,8 @@ public:
 	virtual void apply_node_fusion() noexcept = 0;
 
 	// Analysis methods used internally by Graph.
+	virtual bool reachable(node_id id, unsigned plane) const noexcept = 0;
+
 	virtual void trace_working_memory(Simulation *sim) const noexcept = 0;
 
 	virtual void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned plane) const noexcept = 0;

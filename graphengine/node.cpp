@@ -78,6 +78,8 @@ public:
 
 	void apply_node_fusion() noexcept override {}
 
+	bool reachable(node_id id, unsigned plane) const noexcept override { return false; }
+
 	void trace_working_memory(Simulation *sim) const noexcept override {}
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned plane) const noexcept override
@@ -162,6 +164,17 @@ public:
 		for (unsigned p = 0; p < m_num_planes; ++p) {
 			m_parents[p].first->apply_node_fusion();
 		}
+	}
+
+	bool reachable(node_id id, unsigned plane) const noexcept override
+	{
+		for (unsigned p = 0; p < m_num_planes; ++p) {
+			if (m_parents[p].first->id() == id && m_parents[p].second == plane)
+				return true;
+			if (m_parents[p].first->reachable(id, plane))
+				return true;
+		}
+		return false;
 	}
 
 	void trace_working_memory(Simulation *sim) const noexcept override
@@ -288,6 +301,17 @@ public:
 		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
 			m_parents[p].first->apply_node_fusion();
 		}
+	}
+
+	bool reachable(node_id id, unsigned plane) const noexcept override
+	{
+		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
+			if (m_parents[p].first->id() == id && m_parents[p].second == plane)
+				return true;
+			if (m_parents[p].first->reachable(id, plane))
+				return true;
+		}
+		return false;
 	}
 
 	void trace_working_memory(Simulation *sim) const noexcept override

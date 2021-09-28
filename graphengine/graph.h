@@ -74,6 +74,8 @@ private:
 	std::vector<std::unique_ptr<Node>> m_nodes;
 	std::vector<node_id> m_source_ids;
 	std::unique_ptr<SimulationResult> m_simulation_result;
+	std::unique_ptr<SimulationResult> m_planar_simulation_result[NODE_MAX_PLANES];
+	node_dep_desc m_planar_deps[NODE_MAX_PLANES];
 
 	node_id m_sink_id = null_node;
 
@@ -87,11 +89,13 @@ private:
 
 	void add_node(std::unique_ptr<Node> node);
 
-	std::unique_ptr<Simulation> begin_compile();
+	std::unique_ptr<Simulation> begin_compile(unsigned num_planes);
 
-	void compile(Simulation *sim) noexcept;
+	void compile_plane(Simulation *sim, const node_dep &dep) noexcept;
 
-	FrameState prepare_frame_state(const EndpointConfiguration &endpoints, void *tmp) const;
+	void compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept;
+
+	FrameState prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
 public:
 	Graph();
 

@@ -35,6 +35,13 @@ public:
 		m_step{ 1 }
 	{}
 
+	void reset()
+	{
+		m_node_state.assign(m_node_state.size(), node_state{});
+		m_scratchpad_size = 0;
+		m_step = 1;
+	}
+
 	bool is_live(node_id id, node_id cache_id, unsigned row) const
 	{
 		const node_state &state = m_node_state[id];

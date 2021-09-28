@@ -105,7 +105,7 @@ struct Graph::SimulationResult {
 
 	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), tmp_size{}, step{} {}
 
-	void init(const Graph &graph, const Simulation &sim) noexcept
+	void init(const Graph &graph, const Simulation &sim, bool skip_endpoints = false) noexcept
 	{
 		assert(nodes.size() == graph.m_nodes.size());
 
@@ -117,6 +117,9 @@ struct Graph::SimulationResult {
 
 			unsigned live_rows = sim.live_range(id);
 			if (!live_rows)
+				continue;
+
+			if (skip_endpoints && node->sourcesink())
 				continue;
 
 			for (unsigned p = 0; p < node->num_planes(); ++p) {
@@ -202,13 +205,27 @@ void Graph::add_node(std::unique_ptr<Node> node)
 	m_nodes.push_back(std::move(node));
 }
 
-std::unique_ptr<Simulation> Graph::begin_compile()
+std::unique_ptr<Simulation> Graph::begin_compile(unsigned num_planes)
 {
 	m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
 	return std::make_unique<Simulation>(m_nodes.size());
 }
 
-void Graph::compile(Simulation *sim) noexcept
+void Graph::compile_plane(Simulation *sim, const node_dep &dep) noexcept
+{
+	Node *node = dep.first;
+	unsigned plane = dep.second;
+	assert(!node->sourcesink());
+
+	node->trace_working_memory(sim);
+
+	unsigned height = node->format(plane).height;
+	for (unsigned i = 0; i < height; ++i) {
+		node->trace_access_pattern(sim, i, i + 1, plane);
+	}
+}
+
+void Graph::compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept
 {
 	assert(m_simulation_result);
 
@@ -237,9 +254,42 @@ void Graph::compile(Simulation *sim) noexcept
 	}
 
 	m_simulation_result->init(*this, *sim);
+
+	// Determine if the graph can be traversed in a planar order.
+	bool endpoint_visited[(GRAPH_MAX_ENDPOINTS - 1) * NODE_MAX_PLANES] = {};
+	bool planar_compatible = true;
+
+	for (unsigned p = 0; p < num_planes; ++p) {
+		Node *node = deps[p].first;
+
+		for (size_t source_idx = 0; source_idx < m_source_ids.size(); ++source_idx) {
+			for (unsigned source_plane = 0; source_plane < NODE_MAX_PLANES; ++source_plane) {
+				bool reachable = node->reachable(m_source_ids[source_idx], source_plane);
+				bool &flag = endpoint_visited[source_idx * NODE_MAX_PLANES + source_plane];
+
+				if (reachable && flag) {
+					planar_compatible = false;
+					goto out;
+				}
+				if (reachable)
+					flag = true;
+			}
+		}
+	}
+out:
+	if (!planar_compatible)
+		return;
+
+	for (unsigned p = 0; p < num_planes; ++p) {
+		sim->reset();
+		compile_plane(sim, deps[p]);
+		m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
+		m_planar_simulation_result[p]->init(*this, *sim, true);
+		m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
+	}
 }
 
-FrameState Graph::prepare_frame_state(const EndpointConfiguration &endpoints, void *tmp) const
+FrameState Graph::prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
 {
 	unsigned char *head = static_cast<unsigned char *>(tmp);
 	auto allocate = [&](auto *&ptr, size_t count) { ptr = reinterpret_cast<decltype(ptr)>(head); head += sizeof(*ptr) * count; };
@@ -252,12 +302,12 @@ FrameState Graph::prepare_frame_state(const EndpointConfiguration &endpoints, vo
 
 	// Initialize cursors.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		state.set_cursor(static_cast<node_id>(i), m_simulation_result->nodes[i].initial_cursor);
+		state.set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
 	}
 
 	// Allocate caches.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		const SimulationResult::node_result &node_sim = m_simulation_result->nodes[i];
+		const SimulationResult::node_result &node_sim = sim.nodes[i];
 		unsigned num_planes = lookup_node(static_cast<node_id>(i))->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
@@ -275,7 +325,7 @@ FrameState Graph::prepare_frame_state(const EndpointConfiguration &endpoints, vo
 	// Allocate filter contexts.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
 		unsigned char *context_data = nullptr;
-		allocate(context_data, m_simulation_result->nodes[i].context_size);
+		allocate(context_data, sim.nodes[i].context_size);
 
 		state.set_context(static_cast<node_id>(i), context_data);
 	}
@@ -385,8 +435,11 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 		m_sink_id = id;
 
 		// Compilation is irreversible. Run any steps that could fail upfront.
-		sim = begin_compile();
+		sim = begin_compile(num_planes);
 	} catch (...) {
+		for (unsigned p = 0; p < num_planes; ++p) {
+			m_planar_simulation_result[p].reset();
+		}
 		m_simulation_result.reset();
 		m_nodes.resize(original_node_count);
 		m_sink_id = null_node;
@@ -406,7 +459,7 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 		resolved_deps[p].first->add_ref(resolved_deps[p].second);
 	}
 
-	compile(sim.get());
+	compile(sim.get(), num_planes, resolved_deps.data());
 	return m_sink_id;
 }
 
@@ -450,13 +503,33 @@ void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
 	if (m_sink_id < 0)
 		throw std::invalid_argument{ "sink not set" };
 
-	FrameState state = prepare_frame_state(endpoints, tmp);
+	bool can_run_planar = m_planar_simulation_result[0] != nullptr;
+	for (size_t endpoint = 0; endpoint < m_source_ids.size() + 1; ++endpoint) {
+		if (endpoints[endpoint].callback) {
+			can_run_planar = false;
+			break;
+		}
+	}
 
-	// Traversal.
-	Node *sink = lookup_node(m_sink_id);
-	state.reset_initialized(m_nodes.size());
-	sink->begin_frame(&state, 0);
-	sink->process(&state, sink->format(0).height, 0);
+	if (can_run_planar) {
+		unsigned num_planes = m_nodes[m_sink_id]->num_planes();
+
+		for (unsigned p = 0; p < num_planes; ++p) {
+			FrameState state = prepare_frame_state(*m_planar_simulation_result[p], endpoints, tmp);
+			Node *node = lookup_node(m_planar_deps[p].first);
+			state.reset_initialized(m_nodes.size());
+			node->begin_frame(&state, 0);
+			node->process(&state, node->format(m_planar_deps[p].second).height, m_planar_deps[p].second);
+		}
+	} else {
+		FrameState state = prepare_frame_state(*m_simulation_result, endpoints, tmp);
+
+		// Traversal.
+		Node *sink = lookup_node(m_sink_id);
+		state.reset_initialized(m_nodes.size());
+		sink->begin_frame(&state, 0);
+		sink->process(&state, sink->format(0).height, 0);
+	}
 }
 
 } // namespace graphengine
