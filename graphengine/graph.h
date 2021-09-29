@@ -70,6 +70,7 @@ public:
 private:
 	struct SimulationResult;
 
+	std::vector<std::unique_ptr<Filter>> m_pipeline_wrappers;
 	std::unique_ptr<Filter> m_copy_filters[NODE_MAX_PLANES];
 	std::vector<std::unique_ptr<Node>> m_nodes;
 	std::vector<node_id> m_source_ids;
@@ -79,6 +80,7 @@ private:
 	node_id m_sink_id = null_node;
 
 	struct {
+		unsigned pipelining_disabled : 1;
 		unsigned buffer_sizing_disabled : 1;
 		unsigned fusion_disabled : 1;
 		unsigned planar_disabled : 1;
@@ -94,6 +96,8 @@ private:
 
 	void add_node(std::unique_ptr<Node> node);
 
+	node_id add_transform_internal(const Filter *filter, const node_dep_desc deps[]);
+
 	std::unique_ptr<Simulation> begin_compile(unsigned num_planes);
 
 	void compile_plane(Simulation *sim, const node_dep &dep) noexcept;
@@ -107,6 +111,7 @@ public:
 	~Graph();
 
 	// Optimization toggles.
+	void set_pipelining_enabled(bool enabled) { m_flags.pipelining_disabled = !enabled; }
 	void set_buffer_sizing_enabled(bool enabled) { m_flags.buffer_sizing_disabled = !enabled; }
 	void set_fusion_enabled(bool enabled) { m_flags.fusion_disabled = !enabled; }
 	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }

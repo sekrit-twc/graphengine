@@ -87,6 +87,42 @@ public:
 	}
 };
 
+class PipelineDisableFilter final : public Filter {
+	const Filter *m_delegate;
+	FilterDescriptor m_desc;
+public:
+	explicit PipelineDisableFilter(const Filter *filter) : m_delegate{ filter }, m_desc(filter->descriptor())
+	{
+		m_desc.step = m_desc.format.height;
+		m_desc.flags.entire_col = 1;
+	}
+
+	const FilterDescriptor &descriptor() const noexcept override { return m_desc; }
+
+	std::pair<unsigned, unsigned> get_row_deps(unsigned) const noexcept override
+	{
+		unsigned last_call = m_desc.format.height - 1;
+		last_call = last_call - last_call % m_delegate->descriptor().step;
+
+		auto first_range = m_delegate->get_row_deps(0);
+		auto second_range = m_delegate->get_row_deps(last_call);
+		return{ first_range.first, second_range.second };
+	}
+
+	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept override { return m_delegate->get_col_deps(left, right); }
+
+	void init_context(void *context) const noexcept override { m_delegate->init_context(context); }
+
+	void process(const BufferDescriptor in[], const BufferDescriptor out[], unsigned, unsigned left, unsigned right, void *context, void *tmp) const noexcept override
+	{
+		unsigned step = m_delegate->descriptor().step;
+
+		for (unsigned i = 0; i < m_desc.format.height; i += step) {
+			m_delegate->process(in, out, i, left, right, context, tmp);
+		}
+	}
+};
+
 } // namespace
 
 
@@ -381,7 +417,7 @@ node_id Graph::add_source(unsigned num_planes, const PlaneDescriptor desc[])
 	return id;
 }
 
-node_id Graph::add_transform(const Filter *filter, const node_dep_desc deps[])
+node_id Graph::add_transform_internal(const Filter *filter, const node_dep_desc deps[])
 {
 	const FilterDescriptor &desc = filter->descriptor();
 	if (desc.num_deps > FILTER_MAX_DEPS)
@@ -414,6 +450,22 @@ node_id Graph::add_transform(const Filter *filter, const node_dep_desc deps[])
 	return id;
 }
 
+node_id Graph::add_transform(const Filter *filter, const node_dep_desc deps[])
+{
+	if (m_flags.pipelining_disabled) {
+		m_pipeline_wrappers.push_back(std::make_unique<PipelineDisableFilter>(filter));
+		filter = m_pipeline_wrappers.back().get();
+	}
+
+	try {
+		return add_transform_internal(filter, deps);
+	} catch (...) {
+		if (m_flags.pipelining_disabled)
+			m_pipeline_wrappers.pop_back();
+		throw;
+	}
+}
+
 node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 {
 	if (!num_planes)
@@ -432,16 +484,20 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 	try {
 		for (unsigned p = 0; p < num_planes; ++p) {
 			// Sink node does not copy anything. Insert copy filters where needed.
-			if (!resolved_deps[p].first->sourcesink() && resolved_deps[p].first->ref_count(resolved_deps[p].second) == 0)
+			if (!resolved_deps[p].first->sourcesink())
 				continue;
 
 			node_dep_desc copy_deps[FILTER_MAX_DEPS] = { deps[p] };
 			auto filter = std::make_unique<CopyFilter>(resolved_deps[p].first->format(resolved_deps[p].second));
 
-			node_id copy_id = add_transform(filter.get(), copy_deps);
+			node_id copy_id = add_transform_internal(filter.get(), copy_deps);
 			m_copy_filters[p] = std::move(filter);
 			resolved_deps[p].first = m_nodes.back().get();
 			resolved_deps[p].second = 0;
+		}
+
+		for (unsigned p = 0; p < num_planes; ++p) {
+			resolved_deps[p].first->add_ref(resolved_deps[p].second);
 		}
 
 		std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
@@ -452,26 +508,28 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 		// Compilation is irreversible. Run any steps that could fail upfront.
 		sim = begin_compile(num_planes);
 	} catch (...) {
+		// Delete invalid simulation results.
 		for (unsigned p = 0; p < num_planes; ++p) {
 			m_planar_simulation_result[p].reset();
 		}
 		m_simulation_result.reset();
+
+		// Unreference the output nodes.
+		for (unsigned p = 0; p < num_planes; ++p) {
+			resolved_deps[p].first->dec_ref(resolved_deps[p].second);
+			if (resolved_deps[p] != original_resolved_deps[p])
+				original_resolved_deps[p].first->dec_ref(original_resolved_deps[p].second);
+		}
+
+		// Remove inserted copy and sink nodes.
 		m_nodes.resize(original_node_count);
 		m_sink_id = null_node;
 
 		// Destroy all copy filters.
-		for (unsigned p = NODE_MAX_PLANES; p != 0; --p) {
-			if (m_copy_filters[p - 1]) {
-				original_resolved_deps[p - 1].first->dec_ref(original_resolved_deps[p - 1].second);
-				m_copy_filters[p - 1].reset();
-			}
+		for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
+			m_copy_filters[p].reset();
 		}
 		throw;
-	}
-
-	// All steps that could fail have completed.
-	for (unsigned p = 0; p < num_planes; ++p) {
-		resolved_deps[p].first->add_ref(resolved_deps[p].second);
 	}
 
 	compile(sim.get(), num_planes, resolved_deps.data());

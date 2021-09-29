@@ -114,6 +114,7 @@ struct Arguments {
 	unsigned overlay_w = 64;
 	unsigned overlay_h = 64;
 	unsigned times = 1;
+	unsigned char pipeline = 1;
 	unsigned char autosizing = 1;
 	unsigned char fusion = 1;
 	unsigned char planar = 1;
@@ -125,6 +126,7 @@ const ArgparseOption program_switches[] = {
 	{ OPTION_UINT, nullptr, "overlay-width",  offsetof(Arguments, overlay_w),  nullptr, "overlay width (default: 64)" },
 	{ OPTION_UINT, nullptr, "overlay-height", offsetof(Arguments, overlay_h),  nullptr, "overlay height (default: 64)" },
 	{ OPTION_UINT, "t",     "times",          offsetof(Arguments, times),      nullptr, "number of iterations (default: 1)" },
+	{ OPTION_FLAG, nullptr, "pipeline",       offsetof(Arguments, pipeline),   nullptr, "overlap filter execution (default: enabled)" },
 	{ OPTION_FLAG, nullptr, "autosizing",     offsetof(Arguments, autosizing), nullptr, "minimize internal buffer sizing (default: enabled)" },
 	{ OPTION_FLAG, nullptr, "fusion",         offsetof(Arguments, fusion),     nullptr, "enable node fusion (default: enabled)" },
 	{ OPTION_FLAG, nullptr, "planar",         offsetof(Arguments, planar),     nullptr, "allow filter chain to run per-plane (default: enabled)" },
@@ -174,6 +176,7 @@ int main(int argc, char **argv)
 		std::vector<std::unique_ptr<graphengine::Filter>> filters;
 		graphengine::Graph filtergraph;
 
+		filtergraph.set_pipelining_enabled(args.pipeline);
 		filtergraph.set_buffer_sizing_enabled(args.autosizing);
 		filtergraph.set_fusion_enabled(args.fusion);
 		filtergraph.set_planar_enabled(args.planar);
