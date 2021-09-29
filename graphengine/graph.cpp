@@ -127,13 +127,21 @@ struct Graph::SimulationResult {
 				unsigned subsample_h = node->subsample_h(p);
 				assert(live_rows % (1U << subsample_h) == 0);
 
-				unsigned lines = live_rows >> subsample_h;
-				unsigned lines_ceil_log2 = ceil_log2(lines);
-				unsigned mask = lines_ceil_log2 >= std::numeric_limits<unsigned>::digits ? BUFFER_MAX : (1U << lines_ceil_log2) - 1;
+				unsigned mask = BUFFER_MAX;
+				if (!graph.m_flags.buffer_sizing_disabled) {
+					unsigned lines = live_rows >> subsample_h;
+					unsigned lines_ceil_log2 = ceil_log2(lines);
+					if (lines_ceil_log2 < std::numeric_limits<unsigned>::digits)
+						mask = (1U << lines_ceil_log2) - 1;
+				}
+
+				if (mask >= desc.height)
+					mask = BUFFER_MAX;
 
 				// External nodes are allocated by the caller.
 				if (!node->sourcesink()) {
-					result.cache_size_bytes[p] = static_cast<size_t>(mask == BUFFER_MAX ? desc.height : mask + 1) * desc.width * desc.bytes_per_sample;
+					unsigned buffer_lines = mask == BUFFER_MAX ? desc.height : mask + 1;
+					result.cache_size_bytes[p] = static_cast<size_t>(buffer_lines) * desc.width * desc.bytes_per_sample;
 					result.cache_stride[p] = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
 					tmp_size += result.cache_size_bytes[p];
 				}
@@ -232,7 +240,14 @@ void Graph::compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexc
 	Node *sink = lookup_node(m_sink_id);
 	assert(sink);
 
-	sink->apply_node_fusion();
+	if (m_flags.fusion_disabled) {
+		// Even with fusion disabled, the output nodes need to be redirected to the sink.
+		for (unsigned p = 0; p < num_planes; ++p) {
+			deps[p].first->set_cache_location(deps[p].second, m_sink_id, p);
+		}
+	} else {
+		sink->apply_node_fusion();
+	}
 
 	// Lookup the per-filter memory requirements.
 	sink->trace_working_memory(sim);
@@ -257,7 +272,7 @@ void Graph::compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexc
 
 	// Determine if the graph can be traversed in a planar order.
 	bool endpoint_visited[(GRAPH_MAX_ENDPOINTS - 1) * NODE_MAX_PLANES] = {};
-	bool planar_compatible = true;
+	bool planar_compatible = !m_flags.planar_disabled;
 
 	for (unsigned p = 0; p < num_planes; ++p) {
 		Node *node = deps[p].first;
@@ -463,9 +478,24 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 	return m_sink_id;
 }
 
-size_t Graph::get_tmp_size() const
+size_t Graph::get_tmp_size(bool with_callbacks) const
 {
-	return FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size;
+	size_t interleaved_size = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size;
+
+	if (with_callbacks)
+		return interleaved_size;
+
+	bool can_run_planar = !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
+	if (!can_run_planar)
+		return interleaved_size;
+
+	size_t size = 0;
+	for (const auto &result : m_planar_simulation_result) {
+		if (!result)
+			break;
+		size = std::max(size, result->tmp_size);
+	}
+	return FrameState::metadata_size(m_nodes.size()) + size;
 }
 
 Graph::BufferingRequirement Graph::get_buffering_requirement() const
@@ -503,12 +533,11 @@ void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
 	if (m_sink_id < 0)
 		throw std::invalid_argument{ "sink not set" };
 
-	bool can_run_planar = m_planar_simulation_result[0] != nullptr;
-	for (size_t endpoint = 0; endpoint < m_source_ids.size() + 1; ++endpoint) {
-		if (endpoints[endpoint].callback) {
-			can_run_planar = false;
-			break;
-		}
+	bool can_run_planar = !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
+	if (can_run_planar) {
+		auto endpoints_begin = endpoints.begin();
+		auto endpoints_end = endpoints.begin() + m_source_ids.size() + 1;
+		can_run_planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
 	}
 
 	if (can_run_planar) {

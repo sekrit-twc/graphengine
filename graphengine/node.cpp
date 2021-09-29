@@ -324,6 +324,9 @@ public:
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned) const noexcept override
 	{
+		if (m_filter_desc->flags.entire_col)
+			first_row = 0;
+
 		unsigned cursor = sim->cursor(id(), first_row);
 		cursor = sim->is_live(id(), cache_location(0).first, first_row) ? cursor : first_row;
 

@@ -76,8 +76,13 @@ private:
 	std::unique_ptr<SimulationResult> m_simulation_result;
 	std::unique_ptr<SimulationResult> m_planar_simulation_result[NODE_MAX_PLANES];
 	node_dep_desc m_planar_deps[NODE_MAX_PLANES];
-
 	node_id m_sink_id = null_node;
+
+	struct {
+		unsigned buffer_sizing_disabled : 1;
+		unsigned fusion_disabled : 1;
+		unsigned planar_disabled : 1;
+	} m_flags = {};
 
 	node_id next_node_id() const;
 
@@ -101,13 +106,21 @@ public:
 
 	~Graph();
 
+	// Optimization toggles.
+	void set_buffer_sizing_enabled(bool enabled) { m_flags.buffer_sizing_disabled = !enabled; }
+	void set_fusion_enabled(bool enabled) { m_flags.fusion_disabled = !enabled; }
+	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }
+
+	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
+	// Graphs are final once a sink has been defined. No additional nodes may be inserted.
 	node_id add_source(unsigned num_planes, const PlaneDescriptor desc[]);
 
 	node_id add_transform(const Filter *filter, const node_dep_desc deps[]);
 
 	node_id add_sink(unsigned num_planes, const node_dep_desc deps[]);
 
-	size_t get_tmp_size() const;
+	// Runtime execution methods. The sink node must be defined.
+	size_t get_tmp_size(bool with_callbacks = true) const;
 
 	BufferingRequirement get_buffering_requirement() const;
 
