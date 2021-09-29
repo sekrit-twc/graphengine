@@ -1,12 +1,15 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <iostream>
 #include <memory>
-#include <malloc.h>
 #include <graphengine/filter.h>
 #include <graphengine/graph.h>
+#include "aligned_malloc.h"
+#include "argparse.h"
 #include "simplefilters.h"
+#include "timer.h"
 #include "win32_bitmap.h"
 
 // Example script:
@@ -42,7 +45,7 @@ Frame allocate_frame(unsigned width, unsigned height)
 	size_t planesize = rowsize * frame.format[0].height;
 
 	for (unsigned p = 0; p < 3; ++p) {
-		frame.allocs.push_back(std::shared_ptr<void>(_aligned_malloc(planesize, 64), _aligned_free));
+		frame.allocs.push_back(std::shared_ptr<void>(aligned_malloc(planesize, 64), aligned_free));
 		frame.buffer[p].ptr = frame.allocs.back().get();
 		frame.buffer[p].stride = rowsize;
 		frame.buffer[p].mask = graphengine::BUFFER_MAX;
@@ -101,6 +104,33 @@ void write_bmp(const char *path, const Frame &frame)
 	}
 }
 
+
+struct Arguments {
+	const char *source_path;
+	const char *overlay_path;
+	const char *out_path;
+	unsigned source_w = 512;
+	unsigned source_h = 512;
+	unsigned overlay_w = 64;
+	unsigned overlay_h = 64;
+	unsigned times = 1;
+};
+
+const ArgparseOption program_switches[] = {
+	{ OPTION_UINT, "w", "width",  offsetof(Arguments, source_w), nullptr, "source width (default: 512)" },
+	{ OPTION_UINT, "h", "height", offsetof(Arguments, source_h), nullptr, "source height (default: 512)" },
+	{ OPTION_UINT, nullptr, "overlay-width",  offsetof(Arguments, overlay_w), nullptr, "overlay width (default: 64)" },
+	{ OPTION_UINT, nullptr, "overlay-height", offsetof(Arguments, overlay_h), nullptr, "overlay height (default: 64)" },
+	{ OPTION_UINT, "t", "times",  offsetof(Arguments, times),    nullptr, "number of iterations (default: 1)" },
+	{ OPTION_NULL },
+};
+
+const ArgparseOption program_positional[] = {
+	{ OPTION_NULL },
+};
+
+const ArgparseCommandLine program_commandline = { program_switches, program_positional, "testapp", };
+
 } // namespace
 
 
@@ -108,12 +138,22 @@ int main(int argc, char **argv)
 {
 	using graphengine::node_id;
 
-	if (argc < 4)
-		return 1;
+	Arguments args{};
+	int ret = argparse_parse(&program_commandline, &args, argc, argv);
+	if (ret < 0)
+		return ret == ARGPARSE_HELP_MESSAGE ? 0 : ret;
+
+	// Paths are optional.
+	if (ret + 0 < argc)
+		args.source_path = argv[ret + 0];
+	if (ret + 1 < argc)
+		args.overlay_path = argv[ret + 1];
+	if (ret + 2 < argc)
+		args.out_path = argv[ret + 2];
 
 	try {
-		Frame source_frame = load_bmp(argv[1]);
-		Frame overlay_frame = load_bmp(argv[2]);
+		Frame source_frame = args.source_path ?  load_bmp(args.source_path) : allocate_frame(args.source_w, args.source_h);
+		Frame overlay_frame = args.overlay_path ? load_bmp(args.overlay_path) : allocate_frame(args.overlay_w, args.overlay_h);
 
 		for (unsigned p = 0; p < 3; ++p) {
 			overlay_frame.format[p].width = std::min(source_frame.format[p].width, overlay_frame.format[p].width);
@@ -223,10 +263,18 @@ int main(int argc, char **argv)
 		endpoints[2].id = output;
 		std::copy_n(result_frame.buffer, 3, endpoints[2].buffer);
 
-		std::shared_ptr<void> tmp{ _aligned_malloc(filtergraph.get_tmp_size(), 64), _aligned_free };
-		filtergraph.run(endpoints, tmp.get());
+		std::shared_ptr<void> tmp{ aligned_malloc(filtergraph.get_tmp_size(), 64), aligned_free };
 
-		write_bmp(argv[3], result_frame);
+		Timer timer;
+		timer.start();
+		for (unsigned n = 0; n < args.times; ++n) {
+			filtergraph.run(endpoints, tmp.get());
+		}
+		timer.stop();
+		printf("%u frames in %f s: %f fps\n", args.times, timer.elapsed(), args.times / timer.elapsed());
+
+		if (args.out_path)
+			write_bmp(args.out_path, result_frame);
 	} catch (const std::exception &e) {
 		std::cerr << e.what() << '\n';
 		return 1;
