@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include "simplefilters.h"
@@ -335,7 +336,7 @@ public:
 		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
 
 		auto range = get_col_deps(left, right);
-		std::copy_n(srcp + range.first, range.second - range.first, dstp + m_left);
+		std::memcpy(dstp + m_left, srcp + range.first, range.second - range.first);
 	}
 };
 
@@ -375,7 +376,7 @@ public:
 
 		if (i < m_y0 || i >= m_y1) {
 			if (dstp != srcp0)
-				std::copy_n(srcp0 + left, right - left, dstp + left);
+				std::memcpy(dstp + left, srcp0 + left, right - left);
 			return;
 		}
 
@@ -383,7 +384,7 @@ public:
 		if (dstp == srcp0) {
 			unsigned span_left = std::max(left, m_x0);
 			unsigned span_right = std::min(right, m_x1);
-			std::copy_n(srcp1 + span_left, span_right - span_left, dstp + span_left);
+			std::memcpy(dstp + span_left, srcp1 + span_left, span_right - span_left);
 			return;
 		}
 
@@ -399,10 +400,10 @@ public:
 		unsigned span2_left = std::max(left, m_x1);
 		unsigned span2_right = std::max(right, m_x1);
 
-		std::copy_n(srcp0 + span0_left, span0_right - span0_left, dstp + span0_left);
-		std::copy_n(srcp1 + span1_left, span1_right - span1_left, dstp + span1_left);
-		std::copy_n(srcp0 + span2_left, span2_right - span2_left, dstp + span2_left);
-;	}
+		std::memcpy(dstp + span0_left, srcp0 + span0_left, span0_right - span0_left);
+		std::memcpy(dstp + span1_left, srcp1 + span1_left, span1_right - span1_left);
+		std::memcpy(dstp + span2_left, srcp0 + span2_left, span2_right - span2_left);
+	}
 };
 
 } // namespace
