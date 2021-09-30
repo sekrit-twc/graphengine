@@ -23,6 +23,10 @@ void validate_plane_desc(const PlaneDescriptor &desc)
 	if (desc.bytes_per_sample != 1 && desc.bytes_per_sample != 2 && desc.bytes_per_sample != 4)
 		throw std::invalid_argument{ "bytes_per_sample must be 1, 2, or 4" };
 
+	constexpr unsigned max_width = static_cast<unsigned>(UINT_MAX) & ~63U;
+	if (max_width < desc.width)
+		throw std::range_error{ "frame dimensions too large" };
+
 	constexpr size_t max_plane_size = static_cast<size_t>(PTRDIFF_MAX) & ~static_cast<size_t>(63);
 	if (max_plane_size / desc.bytes_per_sample < desc.width)
 		throw std::range_error{ "frame dimensions too large" };
