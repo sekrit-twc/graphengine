@@ -104,6 +104,8 @@ private:
 
 	void compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept;
 
+	bool can_run_planar() const;
+
 	FrameState prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
 public:
 	Graph();
@@ -125,6 +127,8 @@ public:
 	node_id add_sink(unsigned num_planes, const node_dep_desc deps[]);
 
 	// Runtime execution methods. The sink node must be defined.
+	size_t get_cache_footprint(bool with_callbacks = true) const;
+
 	size_t get_tmp_size(bool with_callbacks = true) const;
 
 	BufferingRequirement get_buffering_requirement() const;

@@ -136,10 +136,11 @@ struct Graph::SimulationResult {
 	};
 
 	std::vector<node_result> nodes;
+	size_t cache_footprint;
 	size_t tmp_size;
 	unsigned step;
 
-	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), tmp_size{}, step{} {}
+	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), cache_footprint{}, tmp_size{}, step{} {}
 
 	void init(const Graph &graph, const Simulation &sim, bool skip_endpoints = false) noexcept
 	{
@@ -159,7 +160,7 @@ struct Graph::SimulationResult {
 				continue;
 
 			for (unsigned p = 0; p < node->num_planes(); ++p) {
-				const PlaneDescriptor &desc = node->format(p);
+				PlaneDescriptor desc = node->format(p);
 				unsigned subsample_h = node->subsample_h(p);
 				assert(live_rows % (1U << subsample_h) == 0);
 
@@ -189,6 +190,27 @@ struct Graph::SimulationResult {
 			tmp_size += result.context_size;
 		}
 		tmp_size += sim.scratchpad_size();
+
+		// Cache footprint also includes the endpoints.
+		const auto node_footprint = [&](node_id id)
+		{
+			const auto &node = graph.m_nodes[id];
+			size_t footprint = 0;
+
+			for (unsigned p = 0; p < node->num_planes(); ++p) {
+				PlaneDescriptor desc = node->format(p);
+				unsigned mask = nodes[id].cache_mask[p];
+				size_t rowsize = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
+				footprint += rowsize * (mask == BUFFER_MAX ? desc.height : mask + 1);
+			}
+			return footprint;
+		};
+
+		cache_footprint = tmp_size;
+		for (node_id id : graph.m_source_ids) {
+			cache_footprint += node_footprint(id);
+		}
+		cache_footprint += node_footprint(graph.m_sink_id);
 	}
 };
 
@@ -340,6 +362,11 @@ out:
 	}
 }
 
+bool Graph::can_run_planar() const
+{
+	return !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
+}
+
 FrameState Graph::prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
 {
 	unsigned char *head = static_cast<unsigned char *>(tmp);
@@ -432,8 +459,8 @@ node_id Graph::add_transform_internal(const Filter *filter, const node_dep_desc 
 	auto resolved_deps = resolve_node_deps(desc.num_deps, deps);
 
 	for (unsigned p = 1; p < desc.num_deps; ++p) {
-		const PlaneDescriptor &luma_desc = resolved_deps[0].first->format(resolved_deps[0].second);
-		const PlaneDescriptor &desc = resolved_deps[p].first->format(resolved_deps[p].second);
+		const PlaneDescriptor luma_desc = resolved_deps[0].first->format(resolved_deps[0].second);
+		const PlaneDescriptor desc = resolved_deps[p].first->format(resolved_deps[p].second);
 
 		if (luma_desc.width != desc.width || luma_desc.height != desc.height)
 			throw std::runtime_error{ "must have identical dimensions across all dependencies" };
@@ -536,15 +563,31 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 	return m_sink_id;
 }
 
+size_t Graph::get_cache_footprint(bool with_callbacks) const
+{
+	if (m_sink_id < 0)
+		throw std::invalid_argument{ "sink not set" };
+
+	size_t interleaved_footprint = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->cache_footprint;
+	if (with_callbacks || !can_run_planar())
+		return interleaved_footprint;
+
+	size_t size = 0;
+	for (const auto &result : m_planar_simulation_result) {
+		if (!result)
+			break;
+		size = std::max(size, result->cache_footprint);
+	}
+	return FrameState::metadata_size(m_nodes.size()) + size;
+}
+
 size_t Graph::get_tmp_size(bool with_callbacks) const
 {
+	if (m_sink_id < 0)
+		throw std::invalid_argument{ "sink not set" };
+
 	size_t interleaved_size = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size;
-
-	if (with_callbacks)
-		return interleaved_size;
-
-	bool can_run_planar = !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
-	if (!can_run_planar)
+	if (with_callbacks || !can_run_planar())
 		return interleaved_size;
 
 	size_t size = 0;
@@ -591,14 +634,14 @@ void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
 	if (m_sink_id < 0)
 		throw std::invalid_argument{ "sink not set" };
 
-	bool can_run_planar = !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
-	if (can_run_planar) {
+	bool planar = can_run_planar();
+	if (planar) {
 		auto endpoints_begin = endpoints.begin();
 		auto endpoints_end = endpoints.begin() + m_source_ids.size() + 1;
-		can_run_planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
+		planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
 	}
 
-	if (can_run_planar) {
+	if (planar) {
 		unsigned num_planes = m_nodes[m_sink_id]->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {

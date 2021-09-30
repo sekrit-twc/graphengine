@@ -262,6 +262,7 @@ int main(int argc, char **argv)
 		for (unsigned i = 0; i < 3; ++i) {
 			printf("endpoint %u: id %d, mask = 0x%x\n", i, buffering[i].first, buffering[i].second);
 		}
+		printf("cache footprint: %zu\n", filtergraph.get_cache_footprint(!args.planar));
 		printf("working set: %zu\n", filtergraph.get_tmp_size(!args.planar));
 
 		Frame result_frame = allocate_frame(source_w, source_h);
