@@ -95,11 +95,15 @@ public:
 };
 
 class FrameState {
-	unsigned *m_cursors;
 	BufferDescriptor *m_caches;
 	void **m_contexts;
+	unsigned *m_cursors;
 	unsigned char *m_init_flags;
 	void *m_scratchpad;
+
+	static_assert(alignof(decltype(*m_caches)) >= alignof(decltype(*m_contexts)), "wrong alignment");
+	static_assert(alignof(decltype(*m_contexts)) >= alignof(decltype(*m_cursors)), "wrong alignment");
+	static_assert(alignof(decltype(*m_cursors)) >= alignof(decltype(*m_init_flags)), "wrong alignment");
 
 	Graph::Callback m_callbacks[GRAPH_MAX_ENDPOINTS];
 public:
@@ -107,9 +111,9 @@ public:
 	static size_t metadata_size(size_t num_nodes)
 	{
 		size_t size = 0;
-		size += sizeof(unsigned) * num_nodes; // cursors
-		size += +sizeof(BufferDescriptor) * NODE_MAX_PLANES * num_nodes; // caches
+		size += sizeof(BufferDescriptor) * NODE_MAX_PLANES * num_nodes; // caches
 		size += sizeof(void *) * num_nodes; // contexts
+		size += sizeof(unsigned) * num_nodes; // cursors
 		size += num_nodes; // init_flags
 
 		size = (size + 63) & ~static_cast<size_t>(63);
@@ -120,9 +124,9 @@ public:
 	explicit FrameState(unsigned char *&ptr, size_t num_nodes)
 	{
 		auto allocate = [&](auto *&out, size_t count) { out = reinterpret_cast<decltype(out)>(ptr); ptr += sizeof(*out) * count; };
-		allocate(m_cursors, num_nodes);
 		allocate(m_caches, num_nodes * NODE_MAX_PLANES);
 		allocate(m_contexts, num_nodes);
+		allocate(m_cursors, num_nodes);
 		allocate(m_init_flags, num_nodes);
 		m_scratchpad = nullptr;
 	}
