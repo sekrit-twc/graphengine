@@ -356,6 +356,10 @@ public:
 		m_desc.num_planes = 1;
 		m_desc.step = 1;
 
+		// Make the base layer the in-place plane.
+		m_desc.inplace_hint.enabled = 1;
+		m_desc.inplace_hint.index = 0;
+
 		m_desc.flags.in_place = true;
 	}
 
@@ -371,7 +375,6 @@ public:
 	             unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept
 	{
 		const uint8_t *srcp0 = static_cast<const uint8_t *>(in[0].get_line(i));
-		const uint8_t *srcp1 = static_cast<const uint8_t *>(in[1].get_line(i));
 		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
 
 		if (i < m_y0 || i >= m_y1) {
@@ -379,6 +382,8 @@ public:
 				std::memcpy(dstp + left, srcp0 + left, right - left);
 			return;
 		}
+
+		const uint8_t *srcp1 = static_cast<const uint8_t *>(in[1].get_line(i));
 
 		// Optimized path for in-place.
 		if (dstp == srcp0) {

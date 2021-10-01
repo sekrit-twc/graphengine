@@ -265,36 +265,64 @@ public:
 	void apply_node_fusion() noexcept override
 	{
 		if (m_filter_desc->flags.in_place) {
+			bool parent_visited[FILTER_MAX_DEPS] = {};
 			bool plane_used[FILTER_MAX_PLANES] = {};
 
 			size_t self_rowsize = static_cast<size_t>(m_filter_desc->format.width) * m_filter_desc->format.bytes_per_sample;
 			unsigned self_height = m_filter_desc->format.height;
 
-			// Scan backwards to optimize for LRU.
-			for (unsigned parent = m_filter_desc->num_deps; parent != 0; --parent) {
-				node_dep dep = m_parents[parent - 1];
+			auto try_parent = [&](unsigned parent_num)
+			{
+				if (parent_visited[parent_num])
+					return;
+
+				parent_visited[parent_num] = true;
+
+				node_dep dep = m_parents[parent_num];
 				if (dep.first->sourcesink() || dep.first->ref_count(dep.second) > 1)
-					continue;
+					return;
 
 				// Already fused.
 				if (dep.first->cache_location(dep.second) != std::make_pair(dep.first->id(), dep.second))
-					continue;
+					return;
 
 				// Buffer size mismatch.
 				PlaneDescriptor dep_format = dep.first->format(dep.second);
 				size_t dep_rowsize = static_cast<size_t>(dep_format.width) * dep_format.bytes_per_sample;
 				if (dep_rowsize != self_rowsize || dep_format.height != self_height)
-					continue;
+					return;
 
 				// Search for an unfused output plane.
-				for (unsigned plane = 0; plane < m_filter_desc->num_planes; ++plane) {
-					if (!plane_used[plane]) {
-						auto location = cache_location(plane);
-						dep.first->set_cache_location(dep.second, location.first, location.second);
-						plane_used[plane] = true;
-						break;
-					}
+				auto try_plane = [&](unsigned plane_num)
+				{
+					if (plane_used[plane_num])
+						return false;
+
+					auto location = cache_location(plane_num);
+					dep.first->set_cache_location(dep.second, location.first, location.second);
+					plane_used[plane_num] = true;
+					return true;
+				};
+
+				// Attempt 1:1 mapping of input to output plane.
+				if (m_filter_desc->num_planes >= m_filter_desc->num_deps - parent_num) {
+					if (try_plane(m_filter_desc->num_planes - (m_filter_desc->num_deps - parent_num)))
+						return;
 				}
+
+				for (unsigned plane = m_filter_desc->num_planes; plane != 0; --plane) {
+					if (try_plane(plane - 1))
+						return;
+				}
+			};
+
+			if (m_filter_desc->inplace_hint.enabled) {
+				try_parent(m_filter_desc->inplace_hint.index);
+			}
+
+			// Scan backwards to optimize for LRU.
+			for (unsigned parent = m_filter_desc->num_deps; parent != 0; --parent) {
+				try_parent(parent - 1);
 			}
 		}
 
