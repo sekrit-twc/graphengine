@@ -90,6 +90,7 @@ private:
 
 	node_id next_node_id() const;
 
+	Node *node(node_id id) const;
 	Node *lookup_node(node_id id) const;
 
 	std::array<node_dep, NODE_MAX_PLANES> resolve_node_deps(unsigned num_deps, const node_dep_desc deps[]) const;

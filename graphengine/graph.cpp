@@ -259,13 +259,15 @@ Graph::~Graph() = default;
 
 node_id Graph::next_node_id() const { return static_cast<node_id>(m_nodes.size()); }
 
+Node *Graph::node(node_id id) const { return m_nodes[id].get(); }
+
 Node *Graph::lookup_node(node_id id) const
 {
 	if (id < 0)
 		throw std::range_error{ "null node" };
 	if (static_cast<size_t>(id) >= m_nodes.size())
 		throw std::range_error{ "id out of range" };
-	return m_nodes[id].get();
+	return node(id);
 }
 
 std::array<node_dep, NODE_MAX_PLANES> Graph::resolve_node_deps(unsigned num_deps, const node_dep_desc deps[]) const
@@ -326,8 +328,7 @@ void Graph::compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexc
 {
 	assert(m_simulation_result);
 
-	Node *sink = lookup_node(m_sink_id);
-	assert(sink);
+	Node *sink = node(m_sink_id);
 
 	if (m_flags.fusion_disabled) {
 		// Even with fusion disabled, the output nodes need to be redirected to the sink.
@@ -412,7 +413,7 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 	// Allocate caches.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
 		const SimulationResult::node_result &node_sim = sim.nodes[i];
-		unsigned num_planes = lookup_node(static_cast<node_id>(i))->num_planes();
+		unsigned num_planes = node(static_cast<node_id>(i))->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
 			BufferDescriptor &cache = state.buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
@@ -441,7 +442,7 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 	for (size_t i = 0; i < m_source_ids.size() + 1; ++i) {
 		assert(endpoints[i].id != null_node);
 
-		std::copy_n(endpoints[i].buffer, lookup_node(endpoints[i].id)->num_planes(), &state.buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
+		std::copy_n(endpoints[i].buffer, node(endpoints[i].id)->num_planes(), &state.buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
 		state.set_callback(i, endpoints[i].id, endpoints[i].callback);
 	}
 
@@ -661,7 +662,7 @@ unsigned Graph::get_tile_width(bool with_callbacks) const
 	if (m_sink_id < 0)
 		throw std::invalid_argument{ "sink not set" };
 
-	Node *sink = lookup_node(m_sink_id);
+	Node *sink = node(m_sink_id);
 	unsigned width = sink->format(0).width << sink->subsample_w(0);
 
 	if (m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
@@ -699,7 +700,7 @@ Graph::BufferingRequirement Graph::get_buffering_requirement() const
 
 	auto max_buffering = [=](node_id id)
 	{
-		Node *node = lookup_node(id);
+		Node *node = this->node(id);
 		unsigned planes = node->num_planes();
 		unsigned buffering = 0;
 
@@ -729,13 +730,13 @@ void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
 		planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
 	}
 
-	Node *sink = lookup_node(m_sink_id);
+	Node *sink = node(m_sink_id);
 
 	if (planar) {
-		unsigned num_planes = m_nodes[m_sink_id]->num_planes();
+		unsigned num_planes = sink->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
-			run_node(lookup_node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_tile_width >> sink->subsample_w(p), m_planar_deps[p].second, tmp);
+			run_node(node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_tile_width >> sink->subsample_w(p), m_planar_deps[p].second, tmp);
 		}
 	} else {
 		run_node(sink, *m_simulation_result, endpoints, m_tile_width, 0, tmp);
