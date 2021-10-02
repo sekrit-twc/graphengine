@@ -1,9 +1,11 @@
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <thread>
 #include <graphengine/filter.h>
 #include <graphengine/graph.h>
 #include "aligned_malloc.h"
@@ -114,6 +116,7 @@ struct Arguments {
 	unsigned overlay_w = 64;
 	unsigned overlay_h = 64;
 	unsigned times = 1;
+	unsigned threads = 1;
 	unsigned char pipeline = 1;
 	unsigned char autosize = 1;
 	unsigned char fusion = 1;
@@ -128,6 +131,7 @@ const ArgparseOption program_switches[] = {
 	{ OPTION_UINT, nullptr, "overlay-width",  offsetof(Arguments, overlay_w),  nullptr, "overlay width (default: 64)" },
 	{ OPTION_UINT, nullptr, "overlay-height", offsetof(Arguments, overlay_h),  nullptr, "overlay height (default: 64)" },
 	{ OPTION_UINT, "t",     "times",          offsetof(Arguments, times),      nullptr, "number of iterations (default: 1)" },
+	{ OPTION_UINT, nullptr, "threads",        offsetof(Arguments, threads),    nullptr, "number of worker threads (default: 1)" },
 	{ OPTION_FLAG, nullptr, "pipeline",       offsetof(Arguments, pipeline),   nullptr, "overlap filter execution (default: enabled)" },
 	{ OPTION_FLAG, nullptr, "autosize",       offsetof(Arguments, autosize),   nullptr, "minimize internal buffer sizing (default: enabled)" },
 	{ OPTION_FLAG, nullptr, "fusion",         offsetof(Arguments, fusion),     nullptr, "enable node fusion (default: enabled)" },
@@ -142,6 +146,34 @@ const ArgparseOption program_positional[] = {
 };
 
 const ArgparseCommandLine program_commandline = { program_switches, program_positional, "testapp", };
+
+
+void thread_func(graphengine::Graph *graph, std::atomic_int *counter, unsigned w, unsigned h, unsigned overlay_w, unsigned overlay_h,
+                 graphengine::node_id source, graphengine::node_id overlay, graphengine::node_id output)
+{
+	Frame source_frame = allocate_frame(w, h);
+	Frame overlay_frame = allocate_frame(overlay_w, overlay_h);
+	Frame result_frame = allocate_frame(w, h);
+	graphengine::Graph::EndpointConfiguration endpoints{};
+
+	endpoints[0].id = source;
+	std::copy_n(source_frame.buffer, 3, endpoints[0].buffer);
+
+	endpoints[1].id = overlay;
+	std::copy_n(overlay_frame.buffer, 3, endpoints[1].buffer);
+
+	endpoints[2].id = output;
+	std::copy_n(result_frame.buffer, 3, endpoints[2].buffer);
+
+	std::shared_ptr<void> tmp{ aligned_malloc(graph->get_tmp_size(), 64), aligned_free };
+
+	while (true) {
+		if ((*counter)-- <= 0)
+			break;
+
+		graph->run(endpoints, tmp.get());
+	}
+}
 
 } // namespace
 
@@ -272,30 +304,47 @@ int main(int argc, char **argv)
 		printf("working set: %zu\n", filtergraph.get_tmp_size(!args.planar));
 		printf("tile width: %u\n", filtergraph.get_tile_width(!args.planar));
 
-		Frame result_frame = allocate_frame(source_w, source_h);
-		graphengine::Graph::EndpointConfiguration endpoints{};
+		if (args.threads == 1) {
+			Frame result_frame = allocate_frame(source_w, source_h);
+			graphengine::Graph::EndpointConfiguration endpoints{};
 
-		endpoints[0].id = source;
-		std::copy_n(source_frame.buffer, 3, endpoints[0].buffer);
+			endpoints[0].id = source;
+			std::copy_n(source_frame.buffer, 3, endpoints[0].buffer);
 
-		endpoints[1].id = overlay;
-		std::copy_n(overlay_frame.buffer, 3, endpoints[1].buffer);
+			endpoints[1].id = overlay;
+			std::copy_n(overlay_frame.buffer, 3, endpoints[1].buffer);
 
-		endpoints[2].id = output;
-		std::copy_n(result_frame.buffer, 3, endpoints[2].buffer);
+			endpoints[2].id = output;
+			std::copy_n(result_frame.buffer, 3, endpoints[2].buffer);
 
-		std::shared_ptr<void> tmp{ aligned_malloc(filtergraph.get_tmp_size(), 64), aligned_free };
+			std::shared_ptr<void> tmp{ aligned_malloc(filtergraph.get_tmp_size(), 64), aligned_free };
 
-		Timer timer;
-		timer.start();
-		for (unsigned n = 0; n < args.times; ++n) {
-			filtergraph.run(endpoints, tmp.get());
+			Timer timer;
+			timer.start();
+			for (unsigned n = 0; n < args.times; ++n) {
+				filtergraph.run(endpoints, tmp.get());
+			}
+			timer.stop();
+			printf("%u frames in %f s: %f fps\n", args.times, timer.elapsed(), args.times / timer.elapsed());
+
+			if (args.out_path)
+				write_bmp(args.out_path, result_frame);
+		} else {
+			std::vector<std::thread> threadpool;
+			unsigned n = args.threads ? args.threads : std::thread::hardware_concurrency();
+			std::atomic_int counter{ static_cast<int>(args.times) };
+
+			Timer timer;
+			timer.start();
+			for (unsigned i = 0; i < n; ++i) {
+				threadpool.emplace_back(thread_func, &filtergraph, &counter, source_w, source_h, overlay_w, overlay_h, source, overlay, output);
+			}
+			for (auto &th : threadpool) {
+				th.join();
+			}
+			timer.stop();
+			printf("%u frames in %f s: %f fps\n", args.times, timer.elapsed(), args.times / timer.elapsed());
 		}
-		timer.stop();
-		printf("%u frames in %f s: %f fps\n", args.times, timer.elapsed(), args.times / timer.elapsed());
-
-		if (args.out_path)
-			write_bmp(args.out_path, result_frame);
 	} catch (const std::exception &e) {
 		std::cerr << e.what() << '\n';
 		return 1;
