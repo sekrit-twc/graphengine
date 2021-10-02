@@ -222,11 +222,13 @@ public:
 		state->set_initialized(id());
 	}
 
-	void process(FrameState *state, unsigned last_row, unsigned) const override
+	void process(FrameState *state, unsigned last_row, unsigned plane) const override
 	{
 		Graph::Callback callback = state->has_callback(id()) ? state->callback(id()) : nullptr;
 		std::pair<unsigned, unsigned> callback_bounds = state->col_bounds(id());
 		unsigned cursor = state->cursor(id());
+
+		last_row <<= m_subsample_h[plane];
 
 		for (; cursor < last_row; cursor += m_step) {
 			for (unsigned p = 0; p < m_num_planes; ++p) {

@@ -111,7 +111,9 @@ private:
 
 	FrameState prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
 
-	void run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned tile_width, unsigned plane, void *tmp) const;
+	unsigned calculate_tile_width(const SimulationResult &sim, unsigned width) const;
+
+	void run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const;
 public:
 	Graph();
 
@@ -124,7 +126,7 @@ public:
 	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }
 	void set_tiling_enabled(bool enabled) { m_flags.tiling_disabled = !enabled; }
 
-	void set_tile_width(unsigned tile_width) { m_tile_width = tile_width; }
+	void set_tile_width(unsigned tile_width) { m_tile_width = (tile_width + 63) & ~63U; }
 
 	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
 	// Graphs are final once a sink has been defined. No additional nodes may be inserted.

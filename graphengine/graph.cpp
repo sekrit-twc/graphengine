@@ -449,18 +449,26 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 	return state;
 }
 
-void Graph::run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned tile_width, unsigned plane, void *tmp) const
+unsigned Graph::calculate_tile_width(const SimulationResult &sim, unsigned width) const
+{
+	unsigned tile_width;
+
+	if (sim.no_tiling || m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
+		tile_width = width;
+	else if (m_tile_width)
+		tile_width = m_tile_width;
+	else
+		tile_width = auto_tile_width(width, sim.cache_footprint);
+
+	assert(tile_width == width || tile_width % 64 == 0);
+	return tile_width;
+}
+
+void Graph::run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const
 {
 	FrameState state = prepare_frame_state(sim, endpoints, tmp);
 	const PlaneDescriptor &format = node->format(plane);
-
-	if (!tile_width)
-		tile_width = auto_tile_width(format.width, sim.cache_footprint);
-	else
-		tile_width = (tile_width + 63) & ~63U;
-
-	if (sim.no_tiling || m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
-		tile_width = format.width;
+	unsigned tile_width = calculate_tile_width(sim, format.width);
 
 	for (unsigned j = 0; j < format.width;) {
 		unsigned j_end = std::min(j + tile_width, format.width);
@@ -663,27 +671,16 @@ unsigned Graph::get_tile_width(bool with_callbacks) const
 		throw std::invalid_argument{ "sink not set" };
 
 	Node *sink = node(m_sink_id);
-	unsigned width = sink->format(0).width << sink->subsample_w(0);
 
-	if (m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
-		return width;
+	if (with_callbacks || !can_run_planar())
+		return calculate_tile_width(*m_simulation_result, sink->format(0).width);
 
-	if (with_callbacks && m_simulation_result->no_tiling)
-		return width;
-
-	if (m_tile_width)
-		return std::min(m_tile_width & ~63U, width);
-
-	if (with_callbacks || m_flags.planar_disabled)
-		return auto_tile_width(width, m_simulation_result->cache_footprint);
-
+	unsigned num_planes = node(m_sink_id)->num_planes();
 	unsigned tile_width = 0;
-	for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
-		if (!m_planar_simulation_result[p])
-			break;
-		if (m_planar_simulation_result[p]->no_tiling)
-			return width;
-		tile_width = std::max(tile_width, auto_tile_width(width >> sink->subsample_w(p), m_planar_simulation_result[p]->cache_footprint));
+
+	for (unsigned p = 0; p < num_planes; ++p) {
+		unsigned tmp = calculate_tile_width(*m_planar_simulation_result[p], node(m_planar_deps[p].first)->format(m_planar_deps[p].second).width);
+		tile_width = std::max(tile_width, tmp);
 	}
 	return tile_width;
 }
@@ -736,10 +733,10 @@ void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
 		unsigned num_planes = sink->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
-			run_node(node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_tile_width >> sink->subsample_w(p), m_planar_deps[p].second, tmp);
+			run_node(node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_planar_deps[p].second, tmp);
 		}
 	} else {
-		run_node(sink, *m_simulation_result, endpoints, m_tile_width, 0, tmp);
+		run_node(sink, *m_simulation_result, endpoints, 0, tmp);
 	}
 }
 
