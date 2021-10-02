@@ -17,14 +17,9 @@ class Filter;
 
 class Node {
 	node_id m_id;
-	std::pair<node_id, unsigned> m_cache_location[NODE_MAX_PLANES];
+	ptrdiff_t m_cache_location[NODE_MAX_PLANES];
 protected:
-	Node(node_id id) : m_id{ id }, m_cache_location{}
-	{
-		for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
-			m_cache_location[p] = { id, p };
-		}
-	}
+	Node(node_id id);
 public:
 	Node(const Node &) = delete;
 
@@ -34,9 +29,9 @@ public:
 
 	node_id id() const { return m_id; }
 
-	std::pair<node_id, unsigned> cache_location(unsigned plane) const { return m_cache_location[plane]; }
+	ptrdiff_t cache_location(unsigned plane) const { return m_cache_location[plane]; }
 
-	void set_cache_location(unsigned plane, node_id location_id, unsigned location_plane) { m_cache_location[plane] = { location_id, location_plane }; }
+	void set_cache_location(unsigned plane, ptrdiff_t offset) { m_cache_location[plane] = offset; }
 
 	// Reference counting.
 	virtual unsigned ref_count(unsigned plane) const noexcept = 0;

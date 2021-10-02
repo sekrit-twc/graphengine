@@ -305,7 +305,7 @@ void Graph::compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexc
 	if (m_flags.fusion_disabled) {
 		// Even with fusion disabled, the output nodes need to be redirected to the sink.
 		for (unsigned p = 0; p < num_planes; ++p) {
-			deps[p].first->set_cache_location(deps[p].second, m_sink_id, p);
+			deps[p].first->set_cache_location(deps[p].second, FrameState::cache_descriptor_offset(m_sink_id, p));
 		}
 	} else {
 		sink->apply_node_fusion();
@@ -393,7 +393,7 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 		unsigned num_planes = lookup_node(static_cast<node_id>(i))->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
-			BufferDescriptor &cache = state.buffer(static_cast<node_id>(i), p);
+			BufferDescriptor &cache = state.buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
 
 			unsigned char *cache_data = nullptr;
 			allocate(cache_data, node_sim.cache_size_bytes[p]);
@@ -419,7 +419,7 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 	for (size_t i = 0; i < m_source_ids.size() + 1; ++i) {
 		assert(endpoints[i].id != null_node);
 
-		std::copy_n(endpoints[i].buffer, lookup_node(endpoints[i].id)->num_planes(), &state.buffer(endpoints[i].id, 0));
+		std::copy_n(endpoints[i].buffer, lookup_node(endpoints[i].id)->num_planes(), &state.buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
 		state.set_callback(i, endpoints[i].id, endpoints[i].callback);
 	}
 

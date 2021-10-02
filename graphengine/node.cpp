@@ -157,7 +157,7 @@ public:
 	{
 		for (unsigned p = 0; p < m_num_planes; ++p) {
 			assert(m_parents[p].first->ref_count(m_parents[p].second) == 1);
-			m_parents[p].first->set_cache_location(m_parents[p].second, id(), p);
+			m_parents[p].first->set_cache_location(m_parents[p].second, FrameState::cache_descriptor_offset(id(), p));
 		}
 		for (unsigned p = 0; p < m_num_planes; ++p) {
 			m_parents[p].first->apply_node_fusion();
@@ -283,7 +283,7 @@ public:
 					return;
 
 				// Already fused.
-				if (dep.first->cache_location(dep.second) != std::make_pair(dep.first->id(), dep.second))
+				if (dep.first->cache_location(dep.second) != FrameState::cache_descriptor_offset(dep.first->id(), dep.second))
 					return;
 
 				// Buffer size mismatch.
@@ -298,8 +298,7 @@ public:
 					if (plane_used[plane_num])
 						return false;
 
-					auto location = cache_location(plane_num);
-					dep.first->set_cache_location(dep.second, location.first, location.second);
+					dep.first->set_cache_location(dep.second, cache_location(plane_num));
 					plane_used[plane_num] = true;
 					return true;
 				};
@@ -356,7 +355,12 @@ public:
 			first_row = 0;
 
 		unsigned cursor = sim->cursor(id(), first_row);
-		cursor = sim->is_live(id(), cache_location(0).first, first_row) ? cursor : first_row;
+		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
+			if (!sim->is_live(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row)) {
+				cursor = first_row;
+				break;
+			}
+		}
 
 		for (; cursor < last_row; cursor += std::min(m_filter_desc->format.height - cursor, m_filter_desc->step)) {
 			auto range = m_filter->get_row_deps(cursor);
@@ -368,7 +372,7 @@ public:
 
 		sim->update_cursor_range(id(), first_row, cursor);
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			sim->update_live_range(id(), cache_location(p).first, first_row, cursor);
+			sim->update_live_range(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row, cursor);
 		}
 	}
 
@@ -400,12 +404,10 @@ public:
 		BufferDescriptor outputs[FILTER_MAX_PLANES];
 
 		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-			auto parent_cache = m_parents[p].first->cache_location(m_parents[p].second);
-			inputs[p] = state->buffer(parent_cache.first, parent_cache.second);
+			inputs[p] = state->buffer(m_parents[p].first->cache_location(m_parents[p].second));
 		}
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			auto self_cache = cache_location(p);
-			outputs[p] = state->buffer(self_cache.first, self_cache.second);
+			outputs[p] = state->buffer(cache_location(p));
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
@@ -438,14 +440,11 @@ public:
 			return;
 
 		// Gather dependencies.
-		auto parent_cache = m_parents[0].first->cache_location(m_parents[0].second);
-		BufferDescriptor *input = &state->buffer(parent_cache.first, parent_cache.second);
-
+		BufferDescriptor *input = &state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
 		BufferDescriptor outputs[FILTER_MAX_PLANES];
 
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			auto self_cache = cache_location(p);
-			outputs[p] = state->buffer(self_cache.first, self_cache.second);
+			outputs[p] = state->buffer(cache_location(p));
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
@@ -477,14 +476,11 @@ public:
 
 		// Gather dependencies.
 		BufferDescriptor inputs[FILTER_MAX_DEPS];
-
 		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-			auto parent_cache = m_parents[p].first->cache_location(m_parents[p].second);
-			inputs[p] = state->buffer(parent_cache.first, parent_cache.second);
+			inputs[p] = state->buffer(m_parents[p].first->cache_location(m_parents[p].second));
 		}
 
-		auto self_cache = cache_location(0);
-		BufferDescriptor *output = &state->buffer(self_cache.first, self_cache.second);
+		BufferDescriptor *output = &state->buffer(cache_location(0));
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
 			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
@@ -517,10 +513,8 @@ public:
 			return;
 
 		// Gather dependencies.
-		auto parent_cache = m_parents[0].first->cache_location(m_parents[0].second);
-		auto self_cache = cache_location(0);
-		BufferDescriptor *input = &state->buffer(parent_cache.first, parent_cache.second);
-		BufferDescriptor *output = &state->buffer(self_cache.first, self_cache.second);
+		BufferDescriptor *input = &state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
+		BufferDescriptor *output = &state->buffer(cache_location(0));
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
 			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
@@ -537,6 +531,14 @@ public:
 };
 
 } // namespace
+
+
+Node::Node(node_id id) : m_id{ id }, m_cache_location{}
+{
+	for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
+		m_cache_location[p] = FrameState::cache_descriptor_offset(id, p);
+	}
+}
 
 
 std::unique_ptr<Node> make_source_node(node_id id, unsigned num_planes, const PlaneDescriptor desc[])

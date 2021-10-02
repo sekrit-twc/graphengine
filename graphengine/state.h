@@ -120,6 +120,16 @@ public:
 		return size;
 	}
 
+	static ptrdiff_t cache_descriptor_offset(node_id id, unsigned plane)
+	{
+		return static_cast<size_t>(id) * NODE_MAX_PLANES + plane;
+	}
+
+	static node_id cache_descriptor_offset_to_node(ptrdiff_t offset)
+	{
+		return static_cast<node_id>(static_cast<size_t>(offset) / NODE_MAX_PLANES);
+	}
+
 	// Initialize metadata section.
 	explicit FrameState(unsigned char *&ptr, size_t num_nodes)
 	{
@@ -147,7 +157,7 @@ public:
 	unsigned cursor(node_id id) const { return m_cursors[id]; }
 	void set_cursor(node_id id, unsigned cursor) { m_cursors[id] = cursor; }
 
-	BufferDescriptor &buffer(node_id id, unsigned plane) const { return m_caches[static_cast<size_t>(id) * NODE_MAX_PLANES + plane]; }
+	BufferDescriptor &buffer(ptrdiff_t offset) const { return m_caches[offset]; }
 	void *context(node_id id) const { return m_contexts[id]; }
 	void *scratchpad() const { return m_scratchpad; }
 
