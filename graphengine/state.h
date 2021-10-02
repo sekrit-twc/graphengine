@@ -136,8 +136,12 @@ public:
 
 	void set_callback(size_t endpoint_id, node_id id, Graph::Callback callback)
 	{
-		set_context(id, reinterpret_cast<void *>(endpoint_id));
-		m_callbacks[endpoint_id] = callback;
+		if (callback) {
+			m_callbacks[endpoint_id] = callback;
+			m_contexts[id] = &m_callbacks[endpoint_id];
+		} else {
+			m_contexts[id] = nullptr;
+		}
 	}
 
 	unsigned cursor(node_id id) const { return m_cursors[id]; }
@@ -147,7 +151,8 @@ public:
 	void *context(node_id id) const { return m_contexts[id]; }
 	void *scratchpad() const { return m_scratchpad; }
 
-	Graph::Callback callback(node_id id) { return m_callbacks[reinterpret_cast<unsigned long long>(context(id))]; }
+	bool has_callback(node_id id) const { return !!m_contexts[id]; }
+	Graph::Callback callback(node_id id) const { return *static_cast<Graph::Callback *>(m_contexts[id]);}
 
 	bool initialized(node_id id) const { return m_init_flags[id]; }
 	void set_initialized(node_id id) { m_init_flags[id] = 1; }

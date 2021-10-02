@@ -97,8 +97,7 @@ public:
 
 	void process(FrameState *state, unsigned last_row, unsigned plane) const override
 	{
-		Graph::Callback callback = state->callback(id());
-		if (!callback)
+		if (!state->has_callback(id()))
 			return;
 
 		unsigned cursor = state->cursor(id());
@@ -106,6 +105,7 @@ public:
 		if (cursor >= last_row)
 			return;
 
+		Graph::Callback callback = state->callback(id());
 		for (; cursor < last_row; cursor += m_step) {
 			callback(cursor, 0, m_desc[0].width);
 		}
@@ -211,6 +211,7 @@ public:
 
 	void process(FrameState *state, unsigned last_row, unsigned) const override
 	{
+		Graph::Callback callback = state->has_callback(id()) ? state->callback(id()) : nullptr;
 		unsigned cursor = state->cursor(id());
 
 		for (; cursor < last_row; cursor += m_step) {
@@ -218,7 +219,7 @@ public:
 				m_parents[p].first->process(state, (cursor + m_step) >> m_subsample_h[p], p);
 			}
 
-			if (Graph::Callback callback = state->callback(id()))
+			if (callback)
 				callback(cursor, 0, format(0).width);
 		}
 
