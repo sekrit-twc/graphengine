@@ -39,8 +39,6 @@ unsigned calculate_subsampling_ratios(unsigned num_planes, const PlaneDescriptor
 
 }
 
-} // namespace
-
 
 class SourceNode : public Node {
 	PlaneDescriptor m_desc[NODE_MAX_PLANES] = {};
@@ -229,13 +227,14 @@ public:
 };
 
 
-class TransformNode : public Node {
+class TransformNodeBase : public Node {
+protected:
 	const Filter *m_filter;
 	const FilterDescriptor *m_filter_desc;
 	node_dep m_parents[FILTER_MAX_DEPS] = {};
 	unsigned m_ref_count[FILTER_MAX_PLANES] = {};
 public:
-	TransformNode(node_id id, const Filter *filter, const node_dep deps[]) :
+	TransformNodeBase(node_id id, const Filter *filter, const node_dep deps[]) :
 		Node{ id },
 		m_filter{ filter },
 		m_filter_desc{ &filter->descriptor() }
@@ -383,6 +382,11 @@ public:
 		m_filter->init_context(state->context(id()));
 		state->set_initialized(id());
 	}
+};
+
+class TransformNode final : public TransformNodeBase {
+public:
+	using TransformNodeBase::TransformNodeBase;
 
 	void process(FrameState *state, unsigned last_row, unsigned) const override
 	{
@@ -419,6 +423,120 @@ public:
 	}
 };
 
+class TransformNodeOneInput final : public TransformNodeBase {
+public:
+	TransformNodeOneInput(node_id id, const Filter *filter, const node_dep deps[]) : TransformNodeBase(id, filter, deps)
+	{
+		assert(m_filter_desc->num_deps == 1);
+	}
+
+	void process(FrameState *state, unsigned last_row, unsigned) const override
+	{
+		unsigned cursor = state->cursor(id());
+		if (cursor >= last_row)
+			return;
+
+		// Gather dependencies.
+		auto parent_cache = m_parents[0].first->cache_location(m_parents[0].second);
+		BufferDescriptor *input = &state->buffer(parent_cache.first, parent_cache.second);
+
+		BufferDescriptor outputs[FILTER_MAX_PLANES];
+
+		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
+			auto self_cache = cache_location(p);
+			outputs[p] = state->buffer(self_cache.first, self_cache.second);
+		}
+
+		for (; cursor < last_row; cursor += m_filter_desc->step) {
+			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+
+			// Invoke parent.
+			m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+
+			// Invoke filter.
+			m_filter->process(input, outputs, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+		}
+
+		state->set_cursor(id(), cursor);
+	}
+};
+
+class TransformNodeOneOutput final : public TransformNodeBase {
+public:
+	TransformNodeOneOutput(node_id id, const Filter *filter, const node_dep deps[]) : TransformNodeBase(id, filter, deps)
+	{
+		assert(m_filter_desc->num_planes == 1);
+	}
+
+	void process(FrameState *state, unsigned last_row, unsigned) const override
+	{
+		unsigned cursor = state->cursor(id());
+		if (cursor >= last_row)
+			return;
+
+		// Gather dependencies.
+		BufferDescriptor inputs[FILTER_MAX_DEPS];
+
+		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
+			auto parent_cache = m_parents[p].first->cache_location(m_parents[p].second);
+			inputs[p] = state->buffer(parent_cache.first, parent_cache.second);
+		}
+
+		auto self_cache = cache_location(0);
+		BufferDescriptor *output = &state->buffer(self_cache.first, self_cache.second);
+
+		for (; cursor < last_row; cursor += m_filter_desc->step) {
+			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+
+			// Invoke parents.
+			for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
+				m_parents[p].first->process(state, parent_range.second, m_parents[p].second);
+			}
+
+			// Invoke filter.
+			m_filter->process(inputs, output, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+		}
+
+		state->set_cursor(id(), cursor);
+	}
+};
+
+class TransformNodeSimple final : public TransformNodeBase {
+public:
+	TransformNodeSimple(node_id id, const Filter *filter, const node_dep deps[]) : TransformNodeBase(id, filter, deps)
+	{
+		assert(m_filter_desc->num_deps == 1);
+		assert(m_filter_desc->num_planes == 1);
+	}
+
+	void process(FrameState *state, unsigned last_row, unsigned) const override
+	{
+		unsigned cursor = state->cursor(id());
+		if (cursor >= last_row)
+			return;
+
+		// Gather dependencies.
+		auto parent_cache = m_parents[0].first->cache_location(m_parents[0].second);
+		auto self_cache = cache_location(0);
+		BufferDescriptor *input = &state->buffer(parent_cache.first, parent_cache.second);
+		BufferDescriptor *output = &state->buffer(self_cache.first, self_cache.second);
+
+		for (; cursor < last_row; cursor += m_filter_desc->step) {
+			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+
+			// Invoke parent.
+			m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+
+			// Invoke filter.
+			m_filter->process(input, output, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+		}
+
+		state->set_cursor(id(), cursor);
+	}
+};
+
+} // namespace
+
 
 std::unique_ptr<Node> make_source_node(node_id id, unsigned num_planes, const PlaneDescriptor desc[])
 {
@@ -432,6 +550,14 @@ std::unique_ptr<Node> make_sink_node(node_id id, unsigned num_planes, const std:
 
 std::unique_ptr<Node> make_transform_node(node_id id, const Filter *filter, const node_dep deps[])
 {
+	const auto &desc = filter->descriptor();
+	if (desc.num_deps == 1 && desc.num_planes == 1)
+		return std::make_unique<TransformNodeSimple>(id, filter, deps);
+	if (desc.num_deps == 1)
+		return std::make_unique<TransformNodeOneInput>(id, filter, deps);
+	if (desc.num_planes == 1)
+		return std::make_unique<TransformNodeOneOutput>(id, filter, deps);
+
 	return std::make_unique<TransformNode>(id, filter, deps);
 }
 
