@@ -28,11 +28,13 @@ class Simulation {
 	std::vector<node_state> m_node_state;
 	size_t m_scratchpad_size;
 	unsigned m_step;
+	bool m_no_tiling;
 public:
 	explicit Simulation(size_t num_nodes) :
 		m_node_state(num_nodes),
 		m_scratchpad_size{},
-		m_step{ 1 }
+		m_step{ 1 },
+		m_no_tiling{}
 	{}
 
 	void reset()
@@ -64,6 +66,8 @@ public:
 
 	unsigned step() const { return m_step; }
 
+	bool no_tiling() const { return m_no_tiling; }
+
 	void update_working_memory(node_id id, size_t context, size_t scratchpad)
 	{
 		m_node_state[id].context_size = std::max(m_node_state[id].context_size, context);
@@ -92,17 +96,25 @@ public:
 	}
 
 	void update_step(unsigned step) { m_step = std::max(m_step, step); }
+
+	void set_no_tiling() { m_no_tiling = true; }
 };
 
 class FrameState {
+	struct node_state {
+		void *context;
+		unsigned left;
+		unsigned right;
+	};
+
 	BufferDescriptor *m_caches;
-	void **m_contexts;
+	node_state *m_nodes;
 	unsigned *m_cursors;
 	unsigned char *m_init_flags;
 	void *m_scratchpad;
 
-	static_assert(alignof(decltype(*m_caches)) >= alignof(decltype(*m_contexts)), "wrong alignment");
-	static_assert(alignof(decltype(*m_contexts)) >= alignof(decltype(*m_cursors)), "wrong alignment");
+	static_assert(alignof(decltype(*m_caches)) >= alignof(decltype(*m_nodes)), "wrong alignment");
+	static_assert(alignof(decltype(*m_nodes)) >= alignof(decltype(*m_cursors)), "wrong alignment");
 	static_assert(alignof(decltype(*m_cursors)) >= alignof(decltype(*m_init_flags)), "wrong alignment");
 
 	Graph::Callback m_callbacks[GRAPH_MAX_ENDPOINTS];
@@ -112,7 +124,7 @@ public:
 	{
 		size_t size = 0;
 		size += sizeof(BufferDescriptor) * NODE_MAX_PLANES * num_nodes; // caches
-		size += sizeof(void *) * num_nodes; // contexts
+		size += sizeof(node_state) * num_nodes; // contexts
 		size += sizeof(unsigned) * num_nodes; // cursors
 		size += num_nodes; // init_flags
 
@@ -135,36 +147,57 @@ public:
 	{
 		auto allocate = [&](auto *&out, size_t count) { out = reinterpret_cast<decltype(out)>(ptr); ptr += sizeof(*out) * count; };
 		allocate(m_caches, num_nodes * NODE_MAX_PLANES);
-		allocate(m_contexts, num_nodes);
+		allocate(m_nodes, num_nodes);
 		allocate(m_cursors, num_nodes);
 		allocate(m_init_flags, num_nodes);
 		m_scratchpad = nullptr;
 	}
 
-	void set_context(node_id id, void *ptr) { m_contexts[id] = ptr; }
+	void set_cursor(node_id id, unsigned cursor) { m_cursors[id] = cursor; }
+	void set_context(node_id id, void *ptr) { m_nodes[id].context = ptr; }
 	void set_scratchpad(void *ptr) { m_scratchpad = ptr; }
 
 	void set_callback(size_t endpoint_id, node_id id, Graph::Callback callback)
 	{
 		if (callback) {
 			m_callbacks[endpoint_id] = callback;
-			m_contexts[id] = &m_callbacks[endpoint_id];
+			m_nodes[id].context = &m_callbacks[endpoint_id];
 		} else {
-			m_contexts[id] = nullptr;
+			m_nodes[id].context = nullptr;
 		}
 	}
 
+	bool update_col_bounds(node_id id, unsigned left, unsigned right)
+	{
+		if (!initialized(id)) {
+			m_nodes[id].left = left;
+			m_nodes[id].right = right;
+			return true;
+		}
+
+		bool changed = false;
+		if (left < m_nodes[id].left) {
+			m_nodes[id].left = left;
+			changed = true;
+		}
+		if (right > m_nodes[id].right) {
+			m_nodes[id].right = right;
+			changed = true;
+		}
+		return changed;
+	}
+
 	unsigned cursor(node_id id) const { return m_cursors[id]; }
-	void set_cursor(node_id id, unsigned cursor) { m_cursors[id] = cursor; }
 
 	BufferDescriptor &buffer(ptrdiff_t offset) const { return m_caches[offset]; }
-	void *context(node_id id) const { return m_contexts[id]; }
+	std::pair<unsigned, unsigned> col_bounds(node_id id) const { return{ m_nodes[id].left, m_nodes[id].right }; }
+	void *context(node_id id) const { return m_nodes[id].context; }
 	void *scratchpad() const { return m_scratchpad; }
 
-	bool has_callback(node_id id) const { return !!m_contexts[id]; }
-	Graph::Callback callback(node_id id) const { return *static_cast<Graph::Callback *>(m_contexts[id]);}
+	bool has_callback(node_id id) const { return !!m_nodes[id].context; }
+	Graph::Callback callback(node_id id) const { return *static_cast<Graph::Callback *>(m_nodes[id].context);}
 
-	bool initialized(node_id id) const { return m_init_flags[id]; }
+	bool initialized(node_id id) const { return !!m_init_flags[id]; }
 	void set_initialized(node_id id) { m_init_flags[id] = 1; }
 	void reset_initialized(size_t n) { std::fill_n(m_init_flags, n, 0); }
 };

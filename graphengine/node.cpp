@@ -36,7 +36,6 @@ unsigned calculate_subsampling_ratios(unsigned num_planes, const PlaneDescriptor
 	}
 
 	return step;
-
 }
 
 
@@ -93,7 +92,11 @@ public:
 		sim->update_live_range(id(), id(), first_row, last_row);
 	}
 
-	void begin_frame(FrameState *state, unsigned plane) const noexcept override {}
+	void begin_frame(FrameState *state, unsigned left, unsigned right, unsigned plane) const noexcept override
+	{
+		state->update_col_bounds(id(), left << m_subsample_w[plane], right << m_subsample_w[plane]);
+		state->set_initialized(id());
+	}
 
 	void process(FrameState *state, unsigned last_row, unsigned plane) const override
 	{
@@ -106,8 +109,10 @@ public:
 			return;
 
 		Graph::Callback callback = state->callback(id());
+		std::pair<unsigned, unsigned> cols = state->col_bounds(id());
+
 		for (; cursor < last_row; cursor += m_step) {
-			callback(cursor, 0, m_desc[0].width);
+			callback(cursor, cols.first, cols.second);
 		}
 
 		state->set_cursor(id(), cursor);
@@ -202,16 +207,25 @@ public:
 		sim->update_live_range(id(), id(), first_row, cursor);
 	}
 
-	void begin_frame(FrameState *state, unsigned plane) const noexcept override
+	void begin_frame(FrameState *state, unsigned left, unsigned right, unsigned plane) const noexcept override
 	{
+		if (state->initialized(id()))
+			return;
+
+		left <<= m_subsample_w[plane];
+		right <<= m_subsample_w[plane];
+		state->update_col_bounds(id(), left, right);
+
 		for (unsigned p = 0; p < m_num_planes; ++p) {
-			m_parents[p].first->begin_frame(state, m_parents[p].second);
+			m_parents[p].first->begin_frame(state, left >> m_subsample_w[p], right >> m_subsample_w[p], m_parents[p].second);
 		}
+		state->set_initialized(id());
 	}
 
 	void process(FrameState *state, unsigned last_row, unsigned) const override
 	{
 		Graph::Callback callback = state->has_callback(id()) ? state->callback(id()) : nullptr;
+		std::pair<unsigned, unsigned> callback_bounds = state->col_bounds(id());
 		unsigned cursor = state->cursor(id());
 
 		for (; cursor < last_row; cursor += m_step) {
@@ -220,7 +234,7 @@ public:
 			}
 
 			if (callback)
-				callback(cursor, 0, format(0).width);
+				callback(cursor, callback_bounds.first, callback_bounds.second);
 		}
 
 		state->set_cursor(id(), cursor);
@@ -353,6 +367,8 @@ public:
 	{
 		if (m_filter_desc->flags.entire_col)
 			first_row = 0;
+		if (m_filter_desc->flags.entire_row || m_filter_desc->flags.entire_col)
+			sim->set_no_tiling();
 
 		unsigned cursor = sim->cursor(id(), first_row);
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
@@ -376,15 +392,22 @@ public:
 		}
 	}
 
-	void begin_frame(FrameState *state, unsigned) const noexcept override
+	void begin_frame(FrameState *state, unsigned left, unsigned right, unsigned) const noexcept override
 	{
-		if (state->initialized(id()))
+		if (m_filter_desc->flags.entire_row) {
+			left = 0;
+			right = m_filter_desc->format.width;
+		}
+		if (!state->update_col_bounds(id(), left, right))
 			return;
 
+		std::pair<unsigned, unsigned> col_deps = m_filter->get_col_deps(left, right);
 		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-			m_parents[p].first->begin_frame(state, m_parents[p].second);
+			m_parents[p].first->begin_frame(state, col_deps.first, col_deps.second, m_parents[p].second);
 		}
-		m_filter->init_context(state->context(id()));
+
+		if (!state->initialized(id()))
+			m_filter->init_context(state->context(id()));
 		state->set_initialized(id());
 	}
 };
@@ -419,7 +442,8 @@ public:
 			}
 
 			// Invoke filter.
-			m_filter->process(inputs, outputs, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
+			m_filter->process(inputs, outputs, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
 		}
 
 		state->set_cursor(id(), cursor);
@@ -454,7 +478,8 @@ public:
 			m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
 
 			// Invoke filter.
-			m_filter->process(input, outputs, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
+			m_filter->process(input, outputs, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
 		}
 
 		state->set_cursor(id(), cursor);
@@ -491,7 +516,8 @@ public:
 			}
 
 			// Invoke filter.
-			m_filter->process(inputs, output, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
+			m_filter->process(inputs, output, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
 		}
 
 		state->set_cursor(id(), cursor);
@@ -523,7 +549,8 @@ public:
 			m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
 
 			// Invoke filter.
-			m_filter->process(input, output, cursor, 0, m_filter_desc->format.width, state->context(id()), state->scratchpad());
+			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
+			m_filter->process(input, output, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
 		}
 
 		state->set_cursor(id(), cursor);

@@ -45,7 +45,7 @@ public:
 	{
 		unsigned leftdep = std::max(left, 1U) - 1;
 		unsigned rightdep = static_cast<unsigned>(
-			std::min(static_cast<size_t>(right) + 2, static_cast<size_t>(m_desc.format.width)));
+			std::min(static_cast<size_t>(right) + 1, static_cast<size_t>(m_desc.format.width)));
 		return{ leftdep, rightdep };
 	}
 
@@ -336,7 +336,7 @@ public:
 		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
 
 		auto range = get_col_deps(left, right);
-		std::memcpy(dstp + m_left, srcp + range.first, range.second - range.first);
+		std::memcpy(dstp + m_left + range.first, srcp + range.first, range.second - range.first);
 	}
 };
 
@@ -389,7 +389,8 @@ public:
 		if (dstp == srcp0) {
 			unsigned span_left = std::max(left, m_x0);
 			unsigned span_right = std::min(right, m_x1);
-			std::memcpy(dstp + span_left, srcp1 + span_left, span_right - span_left);
+			if (span_left < span_right)
+				std::memcpy(dstp + span_left, srcp1 + span_left, span_right - span_left);
 			return;
 		}
 
@@ -405,9 +406,12 @@ public:
 		unsigned span2_left = std::max(left, m_x1);
 		unsigned span2_right = std::max(right, m_x1);
 
-		std::memcpy(dstp + span0_left, srcp0 + span0_left, span0_right - span0_left);
-		std::memcpy(dstp + span1_left, srcp1 + span1_left, span1_right - span1_left);
-		std::memcpy(dstp + span2_left, srcp0 + span2_left, span2_right - span2_left);
+		if (span0_left < span0_right)
+			std::memcpy(dstp + span0_left, srcp0 + span0_left, span0_right - span0_left);
+		if (span1_left < span1_right)
+			std::memcpy(dstp + span1_left, srcp1 + span1_left, span1_right - span1_left);
+		if (span2_left < span2_right)
+			std::memcpy(dstp + span2_left, srcp0 + span2_left, span2_right - span2_left);
 	}
 };
 

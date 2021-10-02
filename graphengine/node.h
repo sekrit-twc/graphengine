@@ -62,7 +62,7 @@ public:
 	virtual void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned plane) const noexcept = 0;
 
 	// Setup method called before Node::process.
-	virtual void begin_frame(FrameState *state, unsigned plane) const noexcept = 0;
+	virtual void begin_frame(FrameState *state, unsigned left, unsigned right, unsigned plane) const noexcept = 0;
 
 	// |plane| is used to translate row offsets of subsampled sources.
 	// All node planes are processed on every call. Transform nodes are never subsampled.

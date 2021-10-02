@@ -78,12 +78,14 @@ private:
 	std::unique_ptr<SimulationResult> m_planar_simulation_result[NODE_MAX_PLANES];
 	node_dep_desc m_planar_deps[NODE_MAX_PLANES];
 	node_id m_sink_id = null_node;
+	unsigned m_tile_width = 0;
 
 	struct {
 		unsigned pipelining_disabled : 1;
 		unsigned buffer_sizing_disabled : 1;
 		unsigned fusion_disabled : 1;
 		unsigned planar_disabled : 1;
+		unsigned tiling_disabled : 1;
 	} m_flags = {};
 
 	node_id next_node_id() const;
@@ -107,6 +109,8 @@ private:
 	bool can_run_planar() const;
 
 	FrameState prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
+
+	void run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned tile_width, unsigned plane, void *tmp) const;
 public:
 	Graph();
 
@@ -117,6 +121,9 @@ public:
 	void set_buffer_sizing_enabled(bool enabled) { m_flags.buffer_sizing_disabled = !enabled; }
 	void set_fusion_enabled(bool enabled) { m_flags.fusion_disabled = !enabled; }
 	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }
+	void set_tiling_enabled(bool enabled) { m_flags.tiling_disabled = !enabled; }
+
+	void set_tile_width(unsigned tile_width) { m_tile_width = tile_width; }
 
 	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
 	// Graphs are final once a sink has been defined. No additional nodes may be inserted.
@@ -130,6 +137,8 @@ public:
 	size_t get_cache_footprint(bool with_callbacks = true) const;
 
 	size_t get_tmp_size(bool with_callbacks = true) const;
+
+	unsigned get_tile_width(bool with_callbacks = true) const;
 
 	BufferingRequirement get_buffering_requirement() const;
 

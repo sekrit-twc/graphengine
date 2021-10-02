@@ -16,25 +16,8 @@ namespace graphengine {
 
 namespace {
 
-void validate_plane_desc(const PlaneDescriptor &desc)
-{
-	if (!desc.width || !desc.height)
-		throw std::invalid_argument{ "must have non-zero plane dimensions" };
-	if (desc.bytes_per_sample != 1 && desc.bytes_per_sample != 2 && desc.bytes_per_sample != 4)
-		throw std::invalid_argument{ "bytes_per_sample must be 1, 2, or 4" };
-
-	constexpr unsigned max_width = static_cast<unsigned>(UINT_MAX) & ~63U;
-	if (max_width < desc.width)
-		throw std::range_error{ "frame dimensions too large" };
-
-	constexpr size_t max_plane_size = static_cast<size_t>(PTRDIFF_MAX) & ~static_cast<size_t>(63);
-	if (max_plane_size / desc.bytes_per_sample < desc.width)
-		throw std::range_error{ "frame dimensions too large" };
-
-	size_t rowsize = ((static_cast<size_t>(desc.bytes_per_sample) * desc.width) + 63) & ~static_cast<size_t>(63);
-	if (max_plane_size / rowsize < desc.height)
-		throw std::range_error{ "frame dimensions too large" };
-}
+constexpr size_t CACHE_SIZE = 1U << 20;
+constexpr unsigned TILE_WIDTH_MIN = 128;
 
 unsigned ceil_log2(unsigned count) noexcept
 {
@@ -60,6 +43,47 @@ unsigned ceil_log2(unsigned count) noexcept
 
 	return std::numeric_limits<unsigned>::digits - lzcnt;
 }
+
+void validate_plane_desc(const PlaneDescriptor &desc)
+{
+	if (!desc.width || !desc.height)
+		throw std::invalid_argument{ "must have non-zero plane dimensions" };
+	if (desc.bytes_per_sample != 1 && desc.bytes_per_sample != 2 && desc.bytes_per_sample != 4)
+		throw std::invalid_argument{ "bytes_per_sample must be 1, 2, or 4" };
+
+	constexpr unsigned max_width = static_cast<unsigned>(UINT_MAX) & ~63U;
+	if (max_width < desc.width)
+		throw std::range_error{ "frame dimensions too large" };
+
+	constexpr size_t max_plane_size = static_cast<size_t>(PTRDIFF_MAX) & ~static_cast<size_t>(63);
+	if (max_plane_size / desc.bytes_per_sample < desc.width)
+		throw std::range_error{ "frame dimensions too large" };
+
+	size_t rowsize = ((static_cast<size_t>(desc.bytes_per_sample) * desc.width) + 63) & ~static_cast<size_t>(63);
+	if (max_plane_size / rowsize < desc.height)
+		throw std::range_error{ "frame dimensions too large" };
+}
+
+unsigned auto_tile_width(unsigned width, size_t cache_footprint)
+{
+	unsigned tile = static_cast<unsigned>(std::lrint(width * std::min(static_cast<double>(CACHE_SIZE) / cache_footprint, 1.0)));
+
+	// Try 1, 2, and 3 tiles.
+	if (tile > (width / 5) * 4)
+		return width;
+	if (tile > width / 2)
+		return ((width / 2) + 63) & ~63U;
+	if (tile > width / 3)
+		return ((width / 3) + 63) & ~63U;
+
+	// Classify graph as uncacheable if minimum tile exceeds cache by 10%.
+	tile = std::max(tile & ~63U, TILE_WIDTH_MIN);
+	if (tile == TILE_WIDTH_MIN && static_cast<double>(tile) / width * cache_footprint > CACHE_SIZE * 1.1)
+		return width;
+
+	return tile;
+}
+
 
 class CopyFilter final : public Filter {
 	FilterDescriptor m_desc;
@@ -90,6 +114,7 @@ public:
 		std::memcpy(dst_ptr, src_ptr, static_cast<size_t>(right - left) * m_desc.format.bytes_per_sample);
 	}
 };
+
 
 class PipelineDisableFilter final : public Filter {
 	const Filter *m_delegate;
@@ -143,14 +168,16 @@ struct Graph::SimulationResult {
 	size_t cache_footprint;
 	size_t tmp_size;
 	unsigned step;
+	bool no_tiling;
 
-	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), cache_footprint{}, tmp_size{}, step{} {}
+	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), cache_footprint{}, tmp_size{}, step{}, no_tiling{} {}
 
 	void init(const Graph &graph, const Simulation &sim, bool skip_endpoints = false) noexcept
 	{
 		assert(nodes.size() == graph.m_nodes.size());
 
 		step = sim.step();
+		no_tiling = sim.no_tiling();
 
 		for (const auto &node : graph.m_nodes) {
 			node_id id = node->id();
@@ -176,7 +203,7 @@ struct Graph::SimulationResult {
 						mask = (1U << lines_ceil_log2) - 1;
 				}
 
-				if (mask >= desc.height)
+				if (mask >= desc.height - 1)
 					mask = BUFFER_MAX;
 
 				// External nodes are allocated by the caller.
@@ -382,11 +409,6 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 	ptrdiff_t offset = head - static_cast<unsigned char *>(tmp);
 	head += 64 - offset % 64;
 
-	// Initialize cursors.
-	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		state.set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
-	}
-
 	// Allocate caches.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
 		const SimulationResult::node_result &node_sim = sim.nodes[i];
@@ -424,6 +446,37 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 	}
 
 	return state;
+}
+
+void Graph::run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned tile_width, unsigned plane, void *tmp) const
+{
+	FrameState state = prepare_frame_state(sim, endpoints, tmp);
+	const PlaneDescriptor &format = node->format(plane);
+
+	if (!tile_width)
+		tile_width = auto_tile_width(format.width, sim.cache_footprint);
+	else
+		tile_width = (tile_width + 63) & ~63U;
+
+	if (sim.no_tiling || m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
+		tile_width = format.width;
+
+	for (unsigned j = 0; j < format.width;) {
+		unsigned j_end = std::min(j + tile_width, format.width);
+		if (format.width - j_end < TILE_WIDTH_MIN)
+			j_end = format.width;
+
+		// Initialize cursors.
+		for (size_t i = 0; i < m_nodes.size(); ++i) {
+			state.set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
+		}
+		state.reset_initialized(m_nodes.size());
+
+		node->begin_frame(&state, j, j_end, plane);
+		node->process(&state, format.height, plane);
+
+		j = j_end;
+	}
 }
 
 node_id Graph::add_source(unsigned num_planes, const PlaneDescriptor desc[])
@@ -603,6 +656,37 @@ size_t Graph::get_tmp_size(bool with_callbacks) const
 	return FrameState::metadata_size(m_nodes.size()) + size;
 }
 
+unsigned Graph::get_tile_width(bool with_callbacks) const
+{
+	if (m_sink_id < 0)
+		throw std::invalid_argument{ "sink not set" };
+
+	Node *sink = lookup_node(m_sink_id);
+	unsigned width = sink->format(0).width << sink->subsample_w(0);
+
+	if (m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
+		return width;
+
+	if (with_callbacks && m_simulation_result->no_tiling)
+		return width;
+
+	if (m_tile_width)
+		return std::min(m_tile_width & ~63U, width);
+
+	if (with_callbacks || m_flags.planar_disabled)
+		return auto_tile_width(width, m_simulation_result->cache_footprint);
+
+	unsigned tile_width = 0;
+	for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
+		if (!m_planar_simulation_result[p])
+			break;
+		if (m_planar_simulation_result[p]->no_tiling)
+			return width;
+		tile_width = std::max(tile_width, auto_tile_width(width >> sink->subsample_w(p), m_planar_simulation_result[p]->cache_footprint));
+	}
+	return tile_width;
+}
+
 Graph::BufferingRequirement Graph::get_buffering_requirement() const
 {
 	if (m_sink_id < 0)
@@ -645,24 +729,16 @@ void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
 		planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
 	}
 
+	Node *sink = lookup_node(m_sink_id);
+
 	if (planar) {
 		unsigned num_planes = m_nodes[m_sink_id]->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
-			FrameState state = prepare_frame_state(*m_planar_simulation_result[p], endpoints, tmp);
-			Node *node = lookup_node(m_planar_deps[p].first);
-			state.reset_initialized(m_nodes.size());
-			node->begin_frame(&state, 0);
-			node->process(&state, node->format(m_planar_deps[p].second).height, m_planar_deps[p].second);
+			run_node(lookup_node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_tile_width >> sink->subsample_w(p), m_planar_deps[p].second, tmp);
 		}
 	} else {
-		FrameState state = prepare_frame_state(*m_simulation_result, endpoints, tmp);
-
-		// Traversal.
-		Node *sink = lookup_node(m_sink_id);
-		state.reset_initialized(m_nodes.size());
-		sink->begin_frame(&state, 0);
-		sink->process(&state, sink->format(0).height, 0);
+		run_node(sink, *m_simulation_result, endpoints, m_tile_width, 0, tmp);
 	}
 }
 

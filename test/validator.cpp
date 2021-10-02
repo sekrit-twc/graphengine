@@ -116,12 +116,12 @@ public:
 
 	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept
 	{
-		return{ std::max(i, m_support) - m_support, std::min(i + m_support + 1, desc.format.height) };
+		return{ std::max(i, m_support) - m_support, std::min(i + 1 + m_support, desc.format.height) };
 	}
 
 	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept
 	{
-		return{ std::max(left, m_support) - m_support, std::min(right + m_support + 1, desc.format.width) };
+		return{ std::max(left, m_support) - m_support, std::min(right + m_support, desc.format.width) };
 	}
 };
 
@@ -386,6 +386,7 @@ public:
 
 void ValidationFilter::init_context(void *context) const noexcept
 {
+	state->clear_buffer_records();
 	state->m_filter_history[this].clear();
 }
 
@@ -609,20 +610,61 @@ void GraphValidator::register_factory(const char *filter_name, filter_factory fu
 
 void GraphValidator::validate(const ScriptStatement *statements, size_t num_statements)
 {
-	std::vector<std::unique_ptr<ValidationFilter>> filters;
-	graphengine::Graph graph;
+	auto do_validate = [&](auto hooks)
+	{
+		std::vector<std::unique_ptr<ValidationFilter>> filters;
+		graphengine::Graph graph;
+		hooks(&graph);
 
-	Script script{ &m_factories, &filters, &graph };
-	for (size_t i = 0; i < num_statements; ++i) {
-		script.eval(statements[i]);
+		Script script{ &m_factories, &filters, &graph };
+		for (size_t i = 0; i < num_statements; ++i) {
+			script.eval(statements[i]);
+		}
+
+		std::shared_ptr<void> tmp{ _aligned_malloc(graph.get_tmp_size(), 64), _aligned_free };
+
+		ValidationFilter::ValidationState validation_state{ script.filter_table(), script.endpoints(), script.filter_parents() };
+		for (const auto &f : filters) {
+			f->state = &validation_state;
+		}
+		ASSERT_NO_THROW(graph.run(validation_state.endpoint_config(), tmp.get()));
+	};
+
+	{
+		SCOPED_TRACE("nonplanar+untiled");
+		do_validate([](graphengine::Graph *graph)
+		{
+			graph->set_planar_enabled(false);
+			graph->set_tiling_enabled(false);
+		});
 	}
 
-	std::unordered_map<node_id, std::vector<PlaneDescriptor>> endpoint_desc = script.endpoints();
-	std::shared_ptr<void> tmp{ _aligned_malloc(graph.get_tmp_size(), 64), _aligned_free };
-
-	ValidationFilter::ValidationState validation_state{ script.filter_table(), script.endpoints(), script.filter_parents() };
-	for (const auto &f : filters) {
-		f->state = &validation_state;
+	{
+		SCOPED_TRACE("nonplanar+tiled");
+		do_validate([](graphengine::Graph *graph)
+		{
+			graph->set_planar_enabled(false);
+			graph->set_tiling_enabled(true);
+			graph->set_tile_width(128);
+		});
 	}
-	ASSERT_NO_THROW(graph.run(validation_state.endpoint_config(), tmp.get()));
+
+	{
+		SCOPED_TRACE("planar+untiled");
+		do_validate([](graphengine::Graph *graph)
+		{
+			graph->set_planar_enabled(true);
+			graph->set_tiling_enabled(false);
+		});
+	}
+
+	{
+		SCOPED_TRACE("planar+tiled");
+		do_validate([](graphengine::Graph *graph)
+		{
+			graph->set_planar_enabled(true);
+			graph->set_tiling_enabled(true);
+			graph->set_tile_width(128);
+		});
+	}
 }
