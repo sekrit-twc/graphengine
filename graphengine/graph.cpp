@@ -107,8 +107,8 @@ public:
 
 	void process(const BufferDescriptor *in, const BufferDescriptor *out, unsigned i, unsigned left, unsigned right, void *, void *) const noexcept override
 	{
-		const uint8_t *src_ptr = static_cast<const uint8_t *>(in->get_line(i));
-		uint8_t *dst_ptr = static_cast<uint8_t *>(out->get_line(i));
+		const uint8_t *src_ptr = in->get_line<uint8_t>(i);
+		uint8_t *dst_ptr = out->get_line<uint8_t>(i);
 		src_ptr += static_cast<size_t>(left) * m_desc.format.bytes_per_sample;
 		dst_ptr += static_cast<size_t>(left) * m_desc.format.bytes_per_sample;
 		std::memcpy(dst_ptr, src_ptr, static_cast<size_t>(right - left) * m_desc.format.bytes_per_sample);

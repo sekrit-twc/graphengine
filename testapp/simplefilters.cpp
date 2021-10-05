@@ -61,10 +61,10 @@ public:
 	             unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept override
 	{
 		auto range = get_row_deps(i);
-		const uint8_t *y0 = static_cast<const uint8_t *>(in->get_line(range.first));
-		const uint8_t *y1 = static_cast<const uint8_t *>(in->get_line(i));
-		const uint8_t *y2 = static_cast<const uint8_t *>(in->get_line(range.second - 1));
-		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
+		const uint8_t *y0 = in->get_line<uint8_t>(range.first);
+		const uint8_t *y1 = in->get_line<uint8_t>(i);
+		const uint8_t *y2 = in->get_line<uint8_t>(range.second - 1);
+		uint8_t *dstp = out->get_line<uint8_t>(i);
 
 		unsigned vec_left = (std::max(left, 1U) + 7U) & ~7U;
 		unsigned vec_right = std::min(right, m_desc.format.width - 1U) & ~7U;
@@ -130,10 +130,10 @@ public:
 	             unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept override
 	{
 		auto range = get_row_deps(i);
-		const uint8_t *y0 = static_cast<const uint8_t *>(in->get_line(range.first));
-		const uint8_t *y1 = static_cast<const uint8_t *>(in->get_line(i));
-		const uint8_t *y2 = static_cast<const uint8_t *>(in->get_line(range.second - 1));
-		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
+		const uint8_t *y0 = in->get_line<uint8_t>(range.first);
+		const uint8_t *y1 = in->get_line<uint8_t>(i);
+		const uint8_t *y2 = in->get_line<uint8_t>(range.second - 1);
+		uint8_t *dstp = out->get_line<uint8_t>(i);
 
 		unsigned vec_left = (std::max(left, 1U) + 7U) & ~7U;
 		unsigned vec_right = std::min(right, m_desc.format.width - 1U) & ~7U;
@@ -233,10 +233,10 @@ public:
 	void process(const graphengine::BufferDescriptor in[3], const graphengine::BufferDescriptor *out,
 	             unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept override
 	{
-		const uint8_t *src1 = static_cast<const uint8_t *>(in[0].get_line(i));
-		const uint8_t *src2 = static_cast<const uint8_t *>(in[1].get_line(i));
-		const uint8_t *mask = static_cast<const uint8_t *>(in[2].get_line(i));
-		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
+		const uint8_t *src1 = in[0].get_line<uint8_t>(i);
+		const uint8_t *src2 = in[1].get_line<uint8_t>(i);
+		const uint8_t *mask = in[2].get_line<uint8_t>(i);
+		uint8_t *dstp = out->get_line<uint8_t>(i);
 
 		unsigned vec_left = (left + 7U) & ~7U;
 		unsigned vec_right = right & ~7U;
@@ -332,8 +332,8 @@ public:
 		if (i < m_top || i >= m_desc.format.height - m_bottom)
 			return;
 
-		const uint8_t *srcp = static_cast<const uint8_t *>(in->get_line(i - m_top));
-		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
+		const uint8_t *srcp = in->get_line<uint8_t>(i - m_top);
+		uint8_t *dstp = out->get_line<uint8_t>(i);
 
 		auto range = get_col_deps(left, right);
 		std::memcpy(dstp + m_left + range.first, srcp + range.first, range.second - range.first);
@@ -374,8 +374,8 @@ public:
 	void process(const graphengine::BufferDescriptor in[2], const graphengine::BufferDescriptor *out,
 	             unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept
 	{
-		const uint8_t *srcp0 = static_cast<const uint8_t *>(in[0].get_line(i));
-		uint8_t *dstp = static_cast<uint8_t *>(out->get_line(i));
+		const uint8_t *srcp0 = in[0].get_line<uint8_t>(i);
+		uint8_t *dstp = out->get_line<uint8_t>(i);
 
 		if (i < m_y0 || i >= m_y1) {
 			if (dstp != srcp0)
@@ -383,7 +383,7 @@ public:
 			return;
 		}
 
-		const uint8_t *srcp1 = static_cast<const uint8_t *>(in[1].get_line(i));
+		const uint8_t *srcp1 = in[1].get_line<uint8_t>(i);
 
 		// Optimized path for in-place.
 		if (dstp == srcp0) {
