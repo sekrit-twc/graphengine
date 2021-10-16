@@ -367,7 +367,7 @@ public:
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned) const noexcept override
 	{
-		if (m_filter_desc->flags.entire_col)
+		if (m_filter_desc->flags.stateful || m_filter_desc->flags.entire_col)
 			first_row = 0;
 		if (m_filter_desc->flags.entire_row || m_filter_desc->flags.entire_col)
 			sim->set_no_tiling();
