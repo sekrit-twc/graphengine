@@ -585,7 +585,7 @@ node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
 
 			node_id copy_id = add_transform_internal(filter.get(), copy_deps);
 			m_copy_filters[p] = std::move(filter);
-			resolved_deps[p].first = m_nodes.back().get();
+			resolved_deps[p].first = node(copy_id);
 			resolved_deps[p].second = 0;
 		}
 

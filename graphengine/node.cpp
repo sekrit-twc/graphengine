@@ -65,13 +65,13 @@ public:
 
 	bool sourcesink() const noexcept override { return true; }
 
-	virtual unsigned subsample_w(unsigned plane) const noexcept { return m_subsample_w[plane]; }
+	unsigned subsample_w(unsigned plane) const noexcept override { return m_subsample_w[plane]; }
 
-	virtual unsigned subsample_h(unsigned plane) const noexcept { return m_subsample_h[plane]; }
+	unsigned subsample_h(unsigned plane) const noexcept override { return m_subsample_h[plane]; }
 
 	unsigned num_planes() const noexcept override { return m_num_planes; }
 
-	PlaneDescriptor format(unsigned plane) const noexcept { return m_desc[plane]; }
+	PlaneDescriptor format(unsigned plane) const noexcept override { return m_desc[plane]; }
 
 	void apply_node_fusion() noexcept override {}
 
@@ -150,13 +150,13 @@ public:
 
 	bool sourcesink() const noexcept override { return true; }
 
-	virtual unsigned subsample_w(unsigned plane) const noexcept { return m_subsample_w[plane]; }
+	unsigned subsample_w(unsigned plane) const noexcept override { return m_subsample_w[plane]; }
 
-	virtual unsigned subsample_h(unsigned plane) const noexcept { return m_subsample_h[plane]; }
+	unsigned subsample_h(unsigned plane) const noexcept override { return m_subsample_h[plane]; }
 
 	unsigned num_planes() const noexcept override { return m_num_planes; }
 
-	PlaneDescriptor format(unsigned plane) const noexcept { return m_parents[plane].first->format(m_parents[plane].second); }
+	PlaneDescriptor format(unsigned plane) const noexcept override { return m_parents[plane].first->format(m_parents[plane].second); }
 
 	void apply_node_fusion() noexcept override
 	{
@@ -270,13 +270,13 @@ public:
 
 	bool sourcesink() const noexcept override { return false; }
 
-	virtual unsigned subsample_w(unsigned) const noexcept { return 0; }
+	unsigned subsample_w(unsigned) const noexcept override { return 0; }
 
-	virtual unsigned subsample_h(unsigned) const noexcept { return 0; }
+	unsigned subsample_h(unsigned) const noexcept override { return 0; }
 
 	unsigned num_planes() const noexcept override { return m_filter_desc->num_planes; }
 
-	PlaneDescriptor format(unsigned) const noexcept { return m_filter_desc->format; }
+	PlaneDescriptor format(unsigned) const noexcept override { return m_filter_desc->format; }
 
 	void apply_node_fusion() noexcept override
 	{
