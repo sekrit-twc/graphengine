@@ -29,6 +29,7 @@ public:
 		m_desc.num_deps = 1;
 		m_desc.num_planes = 1;
 		m_desc.step = 1;
+		m_desc.alignment_mask = 7;
 	}
 
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
@@ -66,22 +67,7 @@ public:
 		const uint8_t *y2 = in->get_line<uint8_t>(range.second - 1);
 		uint8_t *dstp = out->get_line<uint8_t>(i);
 
-		unsigned vec_left = (std::max(left, 1U) + 7U) & ~7U;
-		unsigned vec_right = std::min(right, m_desc.format.width - 1U) & ~7U;
-
-		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(vec_left); ++j) {
-			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
-			ptrdiff_t x1 = j;
-			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
-
-			uint32_t accum = 0;
-			accum = y0[x0] + y0[x1] + y0[x2] +
-			        y1[x0] + y1[x1] + y1[x2] +
-			        y2[x0] + y2[x1] + y2[x2];
-			dstp[j] = (accum + 4) / 9;
-		}
-
-		for (ptrdiff_t j = vec_left; j < static_cast<ptrdiff_t>(vec_right); j += 8) {
+		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(right); j += 8) {
 			__m128i v00 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j - 1)), _mm_setzero_si128());
 			__m128i v01 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 0)), _mm_setzero_si128());
 			__m128i v02 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 1)), _mm_setzero_si128());
@@ -107,18 +93,6 @@ public:
 			val = _mm_packus_epi16(val, val);
 			_mm_storel_epi64((__m128i *)(dstp + j), val);
 		}
-
-		for (ptrdiff_t j = vec_right; j < static_cast<ptrdiff_t>(right); ++j) {
-			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
-			ptrdiff_t x1 = j;
-			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
-
-			uint32_t accum = 0;
-			accum = y0[x0] + y0[x1] + y0[x2] +
-				y1[x0] + y1[x1] + y1[x2] +
-				y2[x0] + y2[x1] + y2[x2];
-			dstp[j] = (accum + 4) / 9;
-		}
 	}
 };
 
@@ -135,24 +109,7 @@ public:
 		const uint8_t *y2 = in->get_line<uint8_t>(range.second - 1);
 		uint8_t *dstp = out->get_line<uint8_t>(i);
 
-		unsigned vec_left = (std::max(left, 1U) + 7U) & ~7U;
-		unsigned vec_right = std::min(right, m_desc.format.width - 1U) & ~7U;
-
-		auto s = [](uint8_t x) { return static_cast<int32_t>(x); };
-
-		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(vec_left); ++j) {
-			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
-			ptrdiff_t x1 = j;
-			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
-
-			int32_t gx = s(y2[x0]) + 2 * y2[x1] + y2[x2] - y0[x0] - 2 * y0[x1] - y0[x2];
-			int32_t gy = s(y0[x2]) + 2 * y1[x2] + y2[x2] - y0[x0] - 2 * y1[x0] - y2[x0];
-
-			float sobel = xsqrtf(static_cast<float>(gx) * gx + static_cast<float>(gy) * gy);
-			dstp[j] = static_cast<uint8_t>(xlrintf(std::min(sobel, 255.0f)));
-		}
-
-		for (ptrdiff_t j = vec_left; j < static_cast<ptrdiff_t>(vec_right); j += 8) {
+		for (ptrdiff_t j = left; j < static_cast<ptrdiff_t>(right); j += 8) {
 			__m128i v00 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j - 1)), _mm_setzero_si128());
 			__m128i v01 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 0)), _mm_setzero_si128());
 			__m128i v02 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(y0 + j + 1)), _mm_setzero_si128());
@@ -190,18 +147,6 @@ public:
 			out = _mm_packus_epi16(out, out);
 			_mm_storel_epi64((__m128i *)(dstp + j), out);
 		}
-
-		for (ptrdiff_t j = vec_right; j < static_cast<ptrdiff_t>(right); ++j) {
-			ptrdiff_t x0 = std::max(j - 1, static_cast<ptrdiff_t>(0));
-			ptrdiff_t x1 = j;
-			ptrdiff_t x2 = std::min(j + 1, static_cast<ptrdiff_t>(m_desc.format.width - 1));
-
-			int32_t gx = s(y2[x0]) + 2 * y2[x1] + y2[x2] - y0[x0] - 2 * y0[x1] - y0[x2];
-			int32_t gy = s(y0[x2]) + 2 * y1[x2] + y2[x2] - y0[x0] - 2 * y1[x0] - y2[x0];
-
-			float sobel = xsqrtf(static_cast<float>(gx) * gx + static_cast<float>(gy) * gy);
-			dstp[j] = static_cast<uint8_t>(xlrintf(std::min(sobel, 255.0f)));
-		}
 	}
 };
 
@@ -218,6 +163,7 @@ public:
 		m_desc.num_deps = 3;
 		m_desc.num_planes = 1;
 		m_desc.step = 1;
+		m_desc.alignment_mask = 7;
 
 		m_desc.flags.in_place = true;
 	}
@@ -238,17 +184,7 @@ public:
 		const uint8_t *mask = in[2].get_line<uint8_t>(i);
 		uint8_t *dstp = out->get_line<uint8_t>(i);
 
-		unsigned vec_left = (left + 7U) & ~7U;
-		unsigned vec_right = right & ~7U;
-
-		for (unsigned j = left; j < vec_left; ++j) {
-			unsigned maskval = mask[j];
-			unsigned invmaskval = 255 - maskval;
-			unsigned result = maskval * src1[j] + invmaskval * src2[j];
-			dstp[j] = static_cast<uint8_t>((result + 127) / 255);
-		}
-
-		for (unsigned j = vec_left; j < vec_right; j += 8) {
+		for (unsigned j = left; j < right; j += 8) {
 			__m128i src1val = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(src1 + j)), _mm_setzero_si128());
 			__m128i src2val = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(src2 + j)), _mm_setzero_si128());
 			__m128i maskval = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(mask + j)), _mm_setzero_si128());
@@ -259,13 +195,6 @@ public:
 			val = _mm_srli_epi16(val, 7);
 			val = _mm_packus_epi16(val, val);
 			_mm_storel_epi64((__m128i *)(dstp + j), val);
-		}
-
-		for (unsigned j = vec_right; j < right; ++j) {
-			unsigned maskval = mask[j];
-			unsigned invmaskval = 255 - maskval;
-			unsigned result = maskval * src1[j] + invmaskval * src2[j];
-			dstp[j] = static_cast<uint8_t>((result + 127) / 255);
 		}
 	}
 };

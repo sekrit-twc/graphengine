@@ -400,6 +400,10 @@ public:
 			left = 0;
 			right = m_filter_desc->format.width;
 		}
+
+		left = left & ~m_filter_desc->alignment_mask;
+		right = std::min((right + m_filter_desc->alignment_mask) & ~m_filter_desc->alignment_mask, m_filter_desc->format.width);
+
 		if (!state->update_col_bounds(id(), left, right))
 			return;
 

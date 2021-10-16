@@ -404,6 +404,10 @@ void ValidationFilter::process(const graphengine::BufferDescriptor in[], const g
 	ASSERT_LE(right, desc.format.width);
 
 	// Check conformance with flags.
+	ASSERT_EQ(0U, left & desc.alignment_mask);
+	if (right < desc.format.width)
+		ASSERT_EQ(0U, right & desc.alignment_mask);
+
 	if (desc.flags.stateful && !state->m_filter_history[this].empty())
 		ASSERT_EQ(state->m_filter_history[this].back().row + desc.step, i);
 

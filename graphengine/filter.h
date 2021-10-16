@@ -13,6 +13,7 @@ struct FilterDescriptor {
 	unsigned num_deps;
 	unsigned num_planes;
 	unsigned step;
+	unsigned alignment_mask;
 	struct {
 		unsigned char enabled : 1;
 		unsigned char index : 3;
