@@ -7,6 +7,7 @@
 #include <new>
 #include <stdexcept>
 #include <vector>
+#include "cpuinfo.h"
 #include "filter.h"
 #include "graph.h"
 #include "node.h"
@@ -16,7 +17,6 @@ namespace graphengine {
 
 namespace {
 
-constexpr size_t CACHE_SIZE_DEFAULT = 1U << 20;
 constexpr unsigned TILE_WIDTH_MIN = 128;
 
 unsigned ceil_log2(unsigned count) noexcept
@@ -66,7 +66,7 @@ void validate_plane_desc(const PlaneDescriptor &desc)
 
 unsigned auto_tile_width(size_t cache_size_hint, unsigned width, size_t cache_footprint)
 {
-	size_t cache_size = cache_size_hint ? cache_size_hint : CACHE_SIZE_DEFAULT;
+	size_t cache_size = cache_size_hint ? cache_size_hint : cpu_cache_per_thread();
 	unsigned tile = static_cast<unsigned>(std::lrint(width * std::min(static_cast<double>(cache_size) / cache_footprint, 1.0)));
 
 	// Try 1, 2, and 3 tiles.

@@ -141,15 +141,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\graphengine\cpuinfo.h" />
     <ClInclude Include="..\..\graphengine\filter.h" />
     <ClInclude Include="..\..\graphengine\graph.h" />
     <ClInclude Include="..\..\graphengine\node.h" />
     <ClInclude Include="..\..\graphengine\state.h" />
     <ClInclude Include="..\..\graphengine\types.h" />
+    <ClInclude Include="..\..\graphengine\x86\cpuinfo_x86.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\graphengine\cpuinfo.cpp" />
     <ClCompile Include="..\..\graphengine\graph.cpp" />
     <ClCompile Include="..\..\graphengine\node.cpp" />
+    <ClCompile Include="..\..\graphengine\x86\cpuinfo_x86.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
