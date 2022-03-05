@@ -78,6 +78,7 @@ private:
 	std::unique_ptr<SimulationResult> m_planar_simulation_result[NODE_MAX_PLANES];
 	node_dep_desc m_planar_deps[NODE_MAX_PLANES];
 	node_id m_sink_id = null_node;
+	size_t m_cache_size = 0;
 	unsigned m_tile_width = 0;
 
 	struct {
@@ -126,6 +127,7 @@ public:
 	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }
 	void set_tiling_enabled(bool enabled) { m_flags.tiling_disabled = !enabled; }
 
+	void set_cache_size(size_t cache_size) { m_cache_size = cache_size; }
 	void set_tile_width(unsigned tile_width) { m_tile_width = (tile_width + 63) & ~63U; }
 
 	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.

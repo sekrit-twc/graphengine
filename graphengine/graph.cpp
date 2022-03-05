@@ -16,7 +16,7 @@ namespace graphengine {
 
 namespace {
 
-constexpr size_t CACHE_SIZE = 1U << 20;
+constexpr size_t CACHE_SIZE_DEFAULT = 1U << 20;
 constexpr unsigned TILE_WIDTH_MIN = 128;
 
 unsigned ceil_log2(unsigned count) noexcept
@@ -64,9 +64,10 @@ void validate_plane_desc(const PlaneDescriptor &desc)
 		throw std::range_error{ "frame dimensions too large" };
 }
 
-unsigned auto_tile_width(unsigned width, size_t cache_footprint)
+unsigned auto_tile_width(size_t cache_size_hint, unsigned width, size_t cache_footprint)
 {
-	unsigned tile = static_cast<unsigned>(std::lrint(width * std::min(static_cast<double>(CACHE_SIZE) / cache_footprint, 1.0)));
+	size_t cache_size = cache_size_hint ? cache_size_hint : CACHE_SIZE_DEFAULT;
+	unsigned tile = static_cast<unsigned>(std::lrint(width * std::min(static_cast<double>(cache_size) / cache_footprint, 1.0)));
 
 	// Try 1, 2, and 3 tiles.
 	if (tile > (width / 5) * 4)
@@ -78,7 +79,7 @@ unsigned auto_tile_width(unsigned width, size_t cache_footprint)
 
 	// Classify graph as uncacheable if minimum tile exceeds cache by 10%.
 	tile = std::max(tile & ~63U, TILE_WIDTH_MIN);
-	if (tile == TILE_WIDTH_MIN && static_cast<double>(tile) / width * cache_footprint > CACHE_SIZE * 1.1)
+	if (tile == TILE_WIDTH_MIN && static_cast<double>(tile) / width * cache_footprint > cache_size * 1.1)
 		return width;
 
 	return tile;
@@ -458,7 +459,7 @@ unsigned Graph::calculate_tile_width(const SimulationResult &sim, unsigned width
 	else if (m_tile_width)
 		tile_width = m_tile_width;
 	else
-		tile_width = auto_tile_width(width, sim.cache_footprint);
+		tile_width = auto_tile_width(m_cache_size, width, sim.cache_footprint);
 
 	assert(tile_width == width || tile_width % 64 == 0);
 	return tile_width;
