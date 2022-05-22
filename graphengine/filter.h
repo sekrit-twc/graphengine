@@ -4,6 +4,7 @@
 #define GRAPHENGINE_FILTER_H_
 
 #include <cstddef>
+#include <utility>
 #include "types.h"
 
 namespace graphengine {
@@ -23,10 +24,10 @@ struct FilterDescriptor {
 	size_t scratchpad_size;
 
 	struct flags {
-		bool stateful;
-		bool in_place;
-		bool entire_row;
-		bool entire_col;
+		unsigned char stateful : 1;
+		unsigned char in_place : 1;
+		unsigned char entire_row : 1;
+		unsigned char entire_col : 1;
 	} flags;
 };
 
@@ -47,7 +48,7 @@ public:
 
 	virtual std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept = 0;
 
-	virtual void init_context(void *context) const noexcept = 0;
+	virtual void init_context(void *context) const noexcept {}
 
 	virtual void process(const BufferDescriptor in[], const BufferDescriptor out[],
 	                     unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept = 0;
