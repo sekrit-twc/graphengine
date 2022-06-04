@@ -374,7 +374,9 @@ public:
 
 		unsigned cursor = sim->cursor(id(), first_row);
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			if (!sim->is_live(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row)) {
+			if (!sim->is_live(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row) &&
+				first_row < sim->cursor_min(id()))
+			{
 				cursor = first_row;
 				break;
 			}
