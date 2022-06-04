@@ -231,8 +231,27 @@ public:
 		last_row <<= m_subsample_h[plane];
 
 		for (; cursor < last_row; cursor += m_step) {
-			for (unsigned p = 0; p < m_num_planes; ++p) {
-				m_parents[p].first->process(state, (cursor + m_step) >> m_subsample_h[p], p);
+			switch (m_num_planes) {
+			case 4:
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
+				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], 1);
+				m_parents[2].first->process(state, (cursor + m_step) >> m_subsample_h[2], 2);
+				m_parents[3].first->process(state, (cursor + m_step) >> m_subsample_h[3], 3);
+				break;
+			case 3:
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
+				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], 1);
+				m_parents[2].first->process(state, (cursor + m_step) >> m_subsample_h[2], 2);
+				break;
+			case 2:
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
+				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], 1);
+				break;
+			case 1:
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
+				break;
+			default:
+				break;
 			}
 
 			if (callback)
@@ -434,19 +453,47 @@ public:
 		BufferDescriptor inputs[FILTER_MAX_DEPS];
 		BufferDescriptor outputs[FILTER_MAX_PLANES];
 
-		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-			inputs[p] = state->buffer(m_parents[p].first->cache_location(m_parents[p].second));
+		switch (m_filter_desc->num_deps) {
+		case 3:
+			inputs[2] = state->buffer(m_parents[2].first->cache_location(m_parents[2].second));
+		case 2:
+			inputs[1] = state->buffer(m_parents[1].first->cache_location(m_parents[1].second));
+		case 1:
+			inputs[0] = state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
+		default:
+			break;
 		}
-		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			outputs[p] = state->buffer(cache_location(p));
+
+		switch (m_filter_desc->num_planes) {
+		case 3:
+			outputs[2] = state->buffer(cache_location(2));
+		case 2:
+			outputs[1] = state->buffer(cache_location(1));
+		case 1:
+			outputs[0] = state->buffer(cache_location(0));
+		default:
+			break;
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
 			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
 
 			// Invoke parents.
-			for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-				m_parents[p].first->process(state, parent_range.second, m_parents[p].second);
+			switch (m_filter_desc->num_deps) {
+			case 3:
+				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+				m_parents[1].first->process(state, parent_range.second, m_parents[1].second);
+				m_parents[2].first->process(state, parent_range.second, m_parents[2].second);
+				break;
+			case 2:
+				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+				m_parents[1].first->process(state, parent_range.second, m_parents[1].second);
+				break;
+			case 1:
+				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+				break;
+			default:
+				break;
 			}
 
 			// Invoke filter.
@@ -475,8 +522,15 @@ public:
 		BufferDescriptor *input = &state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
 		BufferDescriptor outputs[FILTER_MAX_PLANES];
 
-		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			outputs[p] = state->buffer(cache_location(p));
+		switch (m_filter_desc->num_planes) {
+		case 3:
+			outputs[2] = state->buffer(cache_location(2));
+		case 2:
+			outputs[1] = state->buffer(cache_location(1));
+		case 1:
+			outputs[0] = state->buffer(cache_location(0));
+		default:
+			break;
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
@@ -509,18 +563,32 @@ public:
 
 		// Gather dependencies.
 		BufferDescriptor inputs[FILTER_MAX_DEPS];
-		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-			inputs[p] = state->buffer(m_parents[p].first->cache_location(m_parents[p].second));
-		}
-
 		BufferDescriptor *output = &state->buffer(cache_location(0));
+
+		switch (m_filter_desc->num_deps) {
+		case 3:
+			inputs[2] = state->buffer(m_parents[2].first->cache_location(m_parents[2].second));
+		case 2:
+			inputs[1] = state->buffer(m_parents[1].first->cache_location(m_parents[1].second));
+		case 1:
+			inputs[0] = state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
+		default:
+			break;
+		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
 			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
 
 			// Invoke parents.
-			for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
-				m_parents[p].first->process(state, parent_range.second, m_parents[p].second);
+			switch (m_filter_desc->num_deps) {
+			case 3:
+				m_parents[2].first->process(state, parent_range.second, m_parents[2].second);
+			case 2:
+				m_parents[1].first->process(state, parent_range.second, m_parents[1].second);
+			case 1:
+				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+			default:
+				break;
 			}
 
 			// Invoke filter.
