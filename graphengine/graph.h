@@ -110,7 +110,7 @@ private:
 
 	bool can_run_planar() const;
 
-	FrameState prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
+	void prepare_frame_state(FrameState *state, const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
 
 	unsigned calculate_tile_width(const SimulationResult &sim, unsigned width) const;
 

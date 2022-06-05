@@ -6,6 +6,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 #include "cpuinfo.h"
 #include "filter.h"
@@ -400,12 +401,12 @@ bool Graph::can_run_planar() const
 	return !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
 }
 
-FrameState Graph::prepare_frame_state(const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
+void Graph::prepare_frame_state(FrameState *state, const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
 {
 	unsigned char *head = static_cast<unsigned char *>(tmp);
 	auto allocate = [&](auto *&ptr, size_t count) { ptr = reinterpret_cast<decltype(ptr)>(head); head += sizeof(*ptr) * count; };
 
-	FrameState state{ head, m_nodes.size() };
+	new (state) FrameState{ head, m_nodes.size() };
 
 	// Realign pointer.
 	ptrdiff_t offset = head - static_cast<unsigned char *>(tmp);
@@ -417,7 +418,7 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 		unsigned num_planes = node(static_cast<node_id>(i))->num_planes();
 
 		for (unsigned p = 0; p < num_planes; ++p) {
-			BufferDescriptor &cache = state.buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
+			BufferDescriptor &cache = state->buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
 
 			unsigned char *cache_data = nullptr;
 			allocate(cache_data, node_sim.cache_size_bytes[p]);
@@ -433,21 +434,19 @@ FrameState Graph::prepare_frame_state(const SimulationResult &sim, const Endpoin
 		unsigned char *context_data = nullptr;
 		allocate(context_data, sim.nodes[i].context_size);
 
-		state.set_context(static_cast<node_id>(i), context_data);
+		state->set_context(static_cast<node_id>(i), context_data);
 	}
 
 	// Allocate scratchpad.
-	state.set_scratchpad(head);
+	state->set_scratchpad(head);
 
 	// Setup endpoints.
 	for (size_t i = 0; i < m_source_ids.size() + 1; ++i) {
 		assert(endpoints[i].id != null_node);
 
-		std::copy_n(endpoints[i].buffer, node(endpoints[i].id)->num_planes(), &state.buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
-		state.set_callback(i, endpoints[i].id, endpoints[i].callback);
+		std::copy_n(endpoints[i].buffer, node(endpoints[i].id)->num_planes(), &state->buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
+		state->set_callback(i, endpoints[i].id, endpoints[i].callback);
 	}
-
-	return state;
 }
 
 unsigned Graph::calculate_tile_width(const SimulationResult &sim, unsigned width) const
@@ -467,7 +466,12 @@ unsigned Graph::calculate_tile_width(const SimulationResult &sim, unsigned width
 
 void Graph::run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const
 {
-	FrameState state = prepare_frame_state(sim, endpoints, tmp);
+	std::aligned_union_t<0, FrameState> _;
+	static_assert(std::is_trivially_destructible<FrameState>::value, "destructor not allowed");
+
+	FrameState *state = reinterpret_cast<FrameState *>(& _);
+	prepare_frame_state(state, sim, endpoints, tmp);
+
 	const PlaneDescriptor &format = node->format(plane);
 	unsigned tile_width = calculate_tile_width(sim, format.width);
 
@@ -478,12 +482,12 @@ void Graph::run_node(Node *node, const SimulationResult &sim, const EndpointConf
 
 		// Initialize cursors.
 		for (size_t i = 0; i < m_nodes.size(); ++i) {
-			state.set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
+			state->set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
 		}
-		state.reset_initialized(m_nodes.size());
+		state->reset_initialized(m_nodes.size());
 
-		node->begin_frame(&state, j, j_end, plane);
-		node->process(&state, format.height, plane);
+		node->begin_frame(state, j, j_end, plane);
+		node->process(state, format.height, plane);
 
 		j = j_end;
 	}

@@ -153,6 +153,12 @@ public:
 		m_scratchpad = nullptr;
 	}
 
+	FrameState(const FrameState &) = delete;
+	FrameState(FrameState &&) = delete;
+
+	FrameState &operator=(const FrameState &) = delete;
+	FrameState &operator=(FrameState &&) = delete;
+
 	void set_cursor(node_id id, unsigned cursor) { m_cursors[id] = cursor; }
 	void set_context(node_id id, void *ptr) { m_nodes[id].context = ptr; }
 	void set_scratchpad(void *ptr) { m_scratchpad = ptr; }
@@ -195,7 +201,7 @@ public:
 	void *scratchpad() const { return m_scratchpad; }
 
 	bool has_callback(node_id id) const { return !!m_nodes[id].context; }
-	Graph::Callback callback(node_id id) const { return *static_cast<Graph::Callback *>(m_nodes[id].context);}
+	Graph::Callback callback(node_id id) const { return *static_cast<Graph::Callback *>(m_nodes[id].context); }
 
 	bool initialized(node_id id) const { return !!m_init_flags[id]; }
 	void set_initialized(node_id id) { m_init_flags[id] = 1; }
