@@ -412,11 +412,24 @@ void Graph::prepare_frame_state(FrameState *state, const SimulationResult &sim, 
 	ptrdiff_t offset = head - static_cast<unsigned char *>(tmp);
 	head += 64 - offset % 64;
 
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+	size_t guard_page_idx = 0;
+	auto allocate_guard_page = [&]()
+	{
+		unsigned char *page = nullptr;
+		allocate(page, FrameState::guard_page_size());
+		state->set_guard_page(guard_page_idx++, page);
+	};
+#else
+	auto allocate_guard_page = []() {};
+#endif
+
 	// Allocate caches.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
 		const SimulationResult::node_result &node_sim = sim.nodes[i];
 		unsigned num_planes = node(static_cast<node_id>(i))->num_planes();
 
+		allocate_guard_page();
 		for (unsigned p = 0; p < num_planes; ++p) {
 			BufferDescriptor &cache = state->buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
 
@@ -432,13 +445,21 @@ void Graph::prepare_frame_state(FrameState *state, const SimulationResult &sim, 
 	// Allocate filter contexts.
 	for (size_t i = 0; i < m_nodes.size(); ++i) {
 		unsigned char *context_data = nullptr;
+		allocate_guard_page();
 		allocate(context_data, sim.nodes[i].context_size);
 
 		state->set_context(static_cast<node_id>(i), context_data);
 	}
 
 	// Allocate scratchpad.
+	allocate_guard_page();
 	state->set_scratchpad(head);
+	allocate_guard_page();
+
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+	assert(guard_page_idx == FrameState::num_guard_pages(m_nodes.size()));
+	state->set_guard_page(guard_page_idx++, nullptr);
+#endif
 
 	// Setup endpoints.
 	for (size_t i = 0; i < m_source_ids.size() + 1; ++i) {
@@ -657,7 +678,13 @@ size_t Graph::get_tmp_size(bool with_callbacks) const
 	if (m_sink_id < 0)
 		throw std::invalid_argument{ "sink not set" };
 
-	size_t interleaved_size = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size;
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+	size_t guard_page_size = FrameState::guard_page_size() * FrameState::num_guard_pages(m_nodes.size());
+#else
+	size_t guard_page_size = 0;
+#endif
+
+	size_t interleaved_size = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size + guard_page_size;
 	if (with_callbacks || !can_run_planar())
 		return interleaved_size;
 
@@ -667,7 +694,7 @@ size_t Graph::get_tmp_size(bool with_callbacks) const
 			break;
 		size = std::max(size, result->tmp_size);
 	}
-	return FrameState::metadata_size(m_nodes.size()) + size;
+	return FrameState::metadata_size(m_nodes.size()) + size + guard_page_size;
 }
 
 unsigned Graph::get_tile_width(bool with_callbacks) const

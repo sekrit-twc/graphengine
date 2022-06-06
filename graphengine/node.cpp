@@ -113,6 +113,7 @@ public:
 
 		for (; cursor < last_row; cursor += m_step) {
 			callback(cursor, cols.first, cols.second);
+			state->check_guard_pages();
 		}
 
 		state->set_cursor(id(), cursor);
@@ -254,8 +255,10 @@ public:
 				break;
 			}
 
-			if (callback)
+			if (callback) {
 				callback(cursor, callback_bounds.first, callback_bounds.second);
+				state->check_guard_pages();
+			}
 		}
 
 		state->set_cursor(id(), cursor);
@@ -499,6 +502,7 @@ public:
 			// Invoke filter.
 			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
 			m_filter->process(inputs, outputs, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
+			state->check_guard_pages();
 		}
 
 		state->set_cursor(id(), cursor);
@@ -542,6 +546,7 @@ public:
 			// Invoke filter.
 			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
 			m_filter->process(input, outputs, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
+			state->check_guard_pages();
 		}
 
 		state->set_cursor(id(), cursor);
@@ -594,6 +599,7 @@ public:
 			// Invoke filter.
 			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
 			m_filter->process(inputs, output, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
+			state->check_guard_pages();
 		}
 
 		state->set_cursor(id(), cursor);
@@ -627,6 +633,7 @@ public:
 			// Invoke filter.
 			std::pair<unsigned, unsigned> col_bounds = state->col_bounds(id());
 			m_filter->process(input, output, cursor, col_bounds.first, col_bounds.second, state->context(id()), state->scratchpad());
+			state->check_guard_pages();
 		}
 
 		state->set_cursor(id(), cursor);
