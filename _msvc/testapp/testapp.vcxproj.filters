@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Header Files\graphengine">
+      <UniqueIdentifier>{b97b7f97-f45c-4702-8514-80cb2df9df34}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\testapp\mmap.h">
@@ -32,6 +35,15 @@
     </ClInclude>
     <ClInclude Include="..\..\testapp\aligned_malloc.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\filter.h">
+      <Filter>Header Files\graphengine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\graph.h">
+      <Filter>Header Files\graphengine</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\types.h">
+      <Filter>Header Files\graphengine</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

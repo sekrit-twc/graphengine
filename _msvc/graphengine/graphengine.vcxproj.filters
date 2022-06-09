@@ -19,21 +19,15 @@
     <Filter Include="Source Files\x86">
       <UniqueIdentifier>{797eb50b-853f-435b-81fe-4a635fd40764}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Public Header Files">
+      <UniqueIdentifier>{b7bd3bbe-e7d7-49fb-b56c-92efc6231456}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\graphengine\filter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\graph.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\graphengine\node.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\graphengine\state.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\graphengine\cpuinfo.h">
@@ -41,6 +35,15 @@
     </ClInclude>
     <ClInclude Include="..\..\graphengine\x86\cpuinfo_x86.h">
       <Filter>Header Files\x86</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\filter.h">
+      <Filter>Public Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\graph.h">
+      <Filter>Public Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\types.h">
+      <Filter>Public Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

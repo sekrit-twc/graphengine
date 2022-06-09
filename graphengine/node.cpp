@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
-#include "filter.h"
+#include "graphengine/filter.h"
 #include "node.h"
 #include "state.h"
 

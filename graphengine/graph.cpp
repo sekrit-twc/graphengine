@@ -8,9 +8,9 @@
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
+#include "graphengine/filter.h"
+#include "graphengine/graph.h"
 #include "cpuinfo.h"
-#include "filter.h"
-#include "graph.h"
 #include "node.h"
 #include "state.h"
 

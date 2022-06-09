@@ -11,8 +11,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "graph.h"
-#include "types.h"
+#include "graphengine/graph.h"
+#include "graphengine/types.h"
 
 #ifndef GRAPHENGINE_ENABLE_GUARD_PAGE
   #ifndef NDEBUG

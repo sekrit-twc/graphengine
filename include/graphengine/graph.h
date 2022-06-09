@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
-#include "types.h"
+#include "graphengine/types.h"
 
 namespace graphengine {
 

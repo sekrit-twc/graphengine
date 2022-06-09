@@ -19,29 +19,32 @@
     <Filter Include="Source Files\sha1">
       <UniqueIdentifier>{479930b0-d047-4111-8950-ee6108aa9c68}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Public Header Files">
+      <UniqueIdentifier>{fbeb9d9a-1013-490c-a637-ac79f171fa84}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\graphengine\sha1\config.h">
+    <ClInclude Include="..\..\include\graphengine\filter.h">
+      <Filter>Public Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\filter_validation.h">
+      <Filter>Public Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\types.h">
+      <Filter>Public Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\filter_validation\sha1\config.h">
       <Filter>Header Files\sha1</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\graphengine\sha1\sha1.h">
+    <ClInclude Include="..\..\filter_validation\sha1\sha1.h">
       <Filter>Header Files\sha1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\filter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\filter_validation.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\types.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\graphengine\sha1\sha1.c">
+    <ClCompile Include="..\..\filter_validation\sha1\sha1.c">
       <Filter>Source Files\sha1</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\graphengine\filter_validation.cpp">
+    <ClCompile Include="..\..\filter_validation\filter_validation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

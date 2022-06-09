@@ -15,8 +15,9 @@
 #include <utility>
 #include <vector>
 #include "filter.h"
-#include "filter_validation.h"
-#include "types.h"
+#include "graphengine/filter.h"
+#include "graphengine/filter_validation.h"
+#include "graphengine/types.h"
 
 extern "C" {
 #include "sha1/sha1.h"
