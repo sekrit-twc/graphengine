@@ -313,6 +313,8 @@ public:
 			{
 				if (parent_visited[parent_num])
 					return;
+				if (m_filter_desc->inplace_hint.enabled && (m_filter_desc->inplace_hint.disallow_mask & (1U << parent_num)))
+					return;
 
 				parent_visited[parent_num] = true;
 
@@ -354,7 +356,7 @@ public:
 			};
 
 			if (m_filter_desc->inplace_hint.enabled) {
-				try_parent(m_filter_desc->inplace_hint.index);
+				try_parent(m_filter_desc->inplace_hint.preferred_index);
 			}
 
 			// Scan backwards to optimize for LRU.

@@ -287,7 +287,7 @@ public:
 
 		// Make the base layer the in-place plane.
 		m_desc.inplace_hint.enabled = 1;
-		m_desc.inplace_hint.index = 0;
+		m_desc.inplace_hint.preferred_index = 0;
 
 		m_desc.flags.in_place = true;
 	}

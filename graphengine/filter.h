@@ -17,7 +17,8 @@ struct FilterDescriptor {
 	unsigned alignment_mask;
 	struct {
 		unsigned char enabled : 1;
-		unsigned char index : 3;
+		unsigned char preferred_index : 2;
+		unsigned char disallow_mask : 3;
 	} inplace_hint;
 
 	size_t context_size;

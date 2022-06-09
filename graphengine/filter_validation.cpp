@@ -899,10 +899,10 @@ class FilterValidation::impl {
 
 		// Validate hints.
 		if (desc.inplace_hint.enabled) {
-			EXPECT_LT(desc.inplace_hint.index, desc.num_deps);
+			EXPECT_LT(desc.inplace_hint.preferred_index, desc.num_deps);
 			throw_if_failed();
 
-			const PlaneDescriptor &dep_plane = m_dep_format[desc.inplace_hint.index];
+			const PlaneDescriptor &dep_plane = m_dep_format[desc.inplace_hint.preferred_index];
 			if ((static_cast<size_t>(dep_plane.width) * dep_plane.bytes_per_sample !=
 					static_cast<size_t>(desc.format.width) * desc.format.bytes_per_sample) ||
 				dep_plane.height != desc.format.height)
@@ -914,21 +914,23 @@ class FilterValidation::impl {
 			}
 
 			if (!honor_preferred)
-				taken[desc.inplace_hint.index] = 1;
+				taken[desc.inplace_hint.preferred_index] = 1;
 		}
 
 		// Search for matching planes.
 		for (unsigned p = desc.num_planes; p != 0; --p)  {
 			// Honor hints.
-			if (desc.inplace_hint.enabled && !taken[desc.inplace_hint.index]) {
-				dep_to_plane[desc.inplace_hint.index] = p - 1;
-				taken[desc.inplace_hint.index] = 1;
+			if (desc.inplace_hint.enabled && !taken[desc.inplace_hint.preferred_index]) {
+				dep_to_plane[desc.inplace_hint.preferred_index] = p - 1;
+				taken[desc.inplace_hint.preferred_index] = 1;
 				continue;
 			}
 
 			// Scan deps for compatible planes.
 			for (unsigned q = desc.num_deps; q != 0; --q) {
 				if (taken[q - 1])
+					continue;
+				if (desc.inplace_hint.enabled && (desc.inplace_hint.disallow_mask & (1U << (q - 1))))
 					continue;
 
 				const PlaneDescriptor &dep_plane = m_dep_format[q - 1];
@@ -946,7 +948,7 @@ class FilterValidation::impl {
 		}
 
 		if (desc.inplace_hint.enabled && !honor_preferred)
-			taken[desc.inplace_hint.index] = 0;
+			taken[desc.inplace_hint.preferred_index] = 0;
 
 		EXPECT_GT(std::count(taken.begin(), taken.end(), 1), 0) << "in_place flag set, but filter can not operate in-place";
 		throw_if_failed();
