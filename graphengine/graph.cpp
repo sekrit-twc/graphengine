@@ -319,11 +319,12 @@ class GraphImpl::impl {
 			for (unsigned p = 0; p < node->num_planes(); ++p) {
 				PlaneDescriptor desc = node->format(p);
 				unsigned subsample_h = node->subsample_h(p);
-				assert(live_rows % (1U << subsample_h) == 0);
+				if (id != m_sink_id)
+					assert(live_rows % (1U << subsample_h) == 0);
 
 				unsigned mask = BUFFER_MAX;
 				if (!m_flags.buffer_sizing_disabled) {
-					unsigned lines = live_rows >> subsample_h;
+					unsigned lines = (live_rows + ((1U << subsample_h) - 1)) >> subsample_h;
 					unsigned lines_ceil_log2 = ceil_log2(lines);
 					if (lines_ceil_log2 < std::numeric_limits<unsigned>::digits)
 						mask = (1U << lines_ceil_log2) - 1;
@@ -380,6 +381,9 @@ class GraphImpl::impl {
 			// Even with fusion disabled, the output nodes need to be redirected to the sink.
 			for (unsigned p = 0; p < num_planes; ++p) {
 				deps[p].first->set_cache_location(deps[p].second, FrameState::cache_descriptor_offset(m_sink_id, p));
+				for (unsigned q = 0; q < p; ++q) {
+					assert(deps[p].first->cache_location(deps[p].second) != deps[q].first->cache_location(deps[q].second));
+				}
 			}
 		} else {
 			sink->apply_node_fusion();
@@ -642,8 +646,10 @@ public:
 
 		try {
 			for (unsigned p = 0; p < num_planes; ++p) {
+				bool duplicate = std::find(resolved_deps.begin(), resolved_deps.begin() + p, resolved_deps[p]) != resolved_deps.begin() + p;
+
 				// Sink node does not copy anything. Insert copy filters where needed.
-				if (!resolved_deps[p].first->sourcesink())
+				if (!resolved_deps[p].first->sourcesink() && !duplicate)
 					continue;
 
 				node_dep_desc copy_deps[FILTER_MAX_DEPS] = { deps[p] };

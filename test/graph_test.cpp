@@ -220,6 +220,38 @@ TEST(GraphTest, test_add_sink)
 	ASSERT_GE(sink_id, 0);
 }
 
+TEST(GraphTest, test_add_sink_no_sources)
+{
+	graphengine::GraphImpl graph;
+
+	DummyFilter dummy{ 640, 480 };
+	dummy.mutable_descriptor().num_deps = 0;
+	dummy.mutable_descriptor().num_planes = 1;
+	graphengine::node_id dummy_id = graph.add_transform(&dummy, nullptr);
+
+	std::vector<graphengine::node_dep_desc> sink_deps{ { dummy_id, 0 } };
+	graphengine::node_id sink_id = graph.add_sink(static_cast<unsigned>(sink_deps.size()), sink_deps.data());
+	ASSERT_GE(sink_id, 0);
+}
+
+TEST(GraphTest, test_add_sink_duplicate_deps)
+{
+	graphengine::GraphImpl graph;
+	std::vector<graphengine::PlaneDescriptor> desc(1, { 640, 480, 1 });
+	graphengine::node_id source_id = graph.add_source(static_cast<unsigned>(desc.size()), desc.data());
+
+	DummyFilter dummy{ 640, 480 };
+	dummy.mutable_descriptor().num_deps = 1;
+	dummy.mutable_descriptor().num_planes = 1;
+
+	std::vector<graphengine::node_dep_desc> dummy_deps{ { source_id, 0 } };
+	graphengine::node_id dummy_id = graph.add_transform(&dummy, dummy_deps.data());
+
+	std::vector<graphengine::node_dep_desc> sink_deps{ { source_id, 0 }, { dummy_id, 0 }, { dummy_id, 0 } };
+	graphengine::node_id sink_id = graph.add_sink(static_cast<unsigned>(sink_deps.size()), sink_deps.data());
+	ASSERT_GE(sink_id, 0);
+}
+
 TEST(GraphTest, test_add_sink_zero_planes)
 {
 	graphengine::GraphImpl graph;

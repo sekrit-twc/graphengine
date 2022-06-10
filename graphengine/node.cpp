@@ -162,8 +162,12 @@ public:
 	void apply_node_fusion() noexcept override
 	{
 		for (unsigned p = 0; p < m_num_planes; ++p) {
-			assert(m_parents[p].first->ref_count(m_parents[p].second) == 1);
+			assert(!m_parents[p].first->sourcesink());
 			m_parents[p].first->set_cache_location(m_parents[p].second, FrameState::cache_descriptor_offset(id(), p));
+
+			for (unsigned q = 0; q < p; ++q) {
+				assert(m_parents[p].first->cache_location(m_parents[p].second) != m_parents[q].first->cache_location(m_parents[q].second));
+			}
 		}
 		for (unsigned p = 0; p < m_num_planes; ++p) {
 			m_parents[p].first->apply_node_fusion();
