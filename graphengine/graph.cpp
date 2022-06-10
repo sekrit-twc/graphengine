@@ -18,6 +18,9 @@ namespace graphengine {
 
 namespace {
 
+constexpr unsigned ALIGNMENT = 64;
+constexpr unsigned ALIGNMENT_MASK = ALIGNMENT - 1;
+
 constexpr unsigned TILE_WIDTH_MIN = 128;
 
 unsigned ceil_log2(unsigned count) noexcept
@@ -157,33 +160,154 @@ public:
 } // namespace
 
 
-struct Graph::SimulationResult {
-	struct node_result {
-		size_t cache_size_bytes[NODE_MAX_PLANES];
-		ptrdiff_t cache_stride[NODE_MAX_PLANES];
-		size_t context_size;
-		unsigned cache_mask[NODE_MAX_PLANES];
-		unsigned initial_cursor;
+class GraphImpl::impl {
+	struct SimulationResult {
+		struct node_result {
+			size_t cache_size_bytes[NODE_MAX_PLANES];
+			ptrdiff_t cache_stride[NODE_MAX_PLANES];
+			size_t context_size;
+			unsigned cache_mask[NODE_MAX_PLANES];
+			unsigned initial_cursor;
+		};
+
+		std::vector<node_result> nodes;
+		size_t cache_footprint = {};
+		size_t tmp_size = {};
+		unsigned step = {};
+		bool no_tiling = {};
+
+		explicit SimulationResult(size_t num_nodes) : nodes(num_nodes) {}
 	};
 
-	std::vector<node_result> nodes;
-	size_t cache_footprint;
-	size_t tmp_size;
-	unsigned step;
-	bool no_tiling;
+	std::vector<std::unique_ptr<Filter>> m_pipeline_wrappers;
+	std::unique_ptr<Filter> m_copy_filters[NODE_MAX_PLANES];
+	std::vector<std::unique_ptr<Node>> m_nodes;
+	std::vector<node_id> m_source_ids;
+	std::unique_ptr<SimulationResult> m_simulation_result;
+	std::unique_ptr<SimulationResult> m_planar_simulation_result[NODE_MAX_PLANES];
+	node_dep_desc m_planar_deps[NODE_MAX_PLANES];
+	node_id m_sink_id = null_node;
+	size_t m_cache_size = 0;
+	unsigned m_tile_width = 0;
 
-	explicit SimulationResult(size_t num_nodes) : nodes(num_nodes), cache_footprint{}, tmp_size{}, step{}, no_tiling{} {}
+	struct {
+		unsigned pipelining_disabled : 1;
+		unsigned buffer_sizing_disabled : 1;
+		unsigned fusion_disabled : 1;
+		unsigned planar_disabled : 1;
+		unsigned tiling_disabled : 1;
+	} m_flags = {};
 
-	void init(const Graph &graph, const Simulation &sim, bool skip_endpoints = false) noexcept
+	node_id next_node_id() const { return static_cast<node_id>(m_nodes.size()); }
+
+	Node *node(node_id id) const { return m_nodes[id].get(); }
+
+	Node *lookup_node(node_id id) const
 	{
-		assert(nodes.size() == graph.m_nodes.size());
+		if (id < 0)
+			throw std::range_error{ "null node" };
+		if (static_cast<size_t>(id) >= m_nodes.size())
+			throw std::range_error{ "id out of range" };
+		return node(id);
+	}
 
-		step = sim.step();
-		no_tiling = sim.no_tiling();
+	std::array<node_dep, NODE_MAX_PLANES> resolve_node_deps(unsigned num_deps, const node_dep_desc deps[]) const
+	{
+		assert(num_deps <= NODE_MAX_PLANES);
 
-		for (const auto &node : graph.m_nodes) {
+		std::array<node_dep, NODE_MAX_PLANES> resolved_deps;
+
+		for (unsigned i = 0; i < num_deps; ++i) {
+			Node *node = lookup_node(deps[i].first);
+			if (deps[i].second >= node->num_planes())
+				throw std::range_error{ "plane number out of range" };
+
+			resolved_deps[i] = { node, deps[i].second };
+		}
+
+		return resolved_deps;
+	}
+
+	void reserve_next_node()
+	{
+		if (m_nodes.size() > node_id_max)
+			throw std::bad_alloc{};
+
+		m_nodes.reserve(m_nodes.size() + 1);
+	}
+
+	void add_node(std::unique_ptr<Node> node)
+	{
+		if (m_nodes.size() > node_id_max)
+			throw std::bad_alloc{};
+
+		assert(node->id() == m_nodes.size());
+		m_nodes.push_back(std::move(node));
+	}
+
+	node_id add_transform_internal(const Filter *filter, const node_dep_desc deps[])
+	{
+		const FilterDescriptor &desc = filter->descriptor();
+		if (desc.num_deps > FILTER_MAX_DEPS)
+			throw std::invalid_argument{ "maximum number of filter dependencies exceeded" };
+		if (!desc.num_planes)
+			throw std::invalid_argument{ "filter must have non-zero plane count" };
+		if (desc.num_planes > FILTER_MAX_PLANES)
+			throw std::invalid_argument{ "maximum number of filter outputs exceeded" };
+
+		validate_plane_desc(desc.format);
+
+		auto resolved_deps = resolve_node_deps(desc.num_deps, deps);
+
+		for (unsigned p = 1; p < desc.num_deps; ++p) {
+			const PlaneDescriptor luma_desc = resolved_deps[0].first->format(resolved_deps[0].second);
+			const PlaneDescriptor desc = resolved_deps[p].first->format(resolved_deps[p].second);
+
+			if (luma_desc.width != desc.width || luma_desc.height != desc.height)
+				throw std::runtime_error{ "must have identical dimensions across all dependencies" };
+		}
+
+		std::unique_ptr<Node> node = make_transform_node(next_node_id(), filter, resolved_deps.data());
+		node_id id = node->id();
+		add_node(std::move(node));
+
+		for (unsigned p = 0; p < desc.num_deps; ++p) {
+			resolved_deps[p].first->add_ref(resolved_deps[p].second);
+		}
+
+		return id;
+	}
+
+	std::unique_ptr<Simulation> begin_compile(unsigned num_planes)
+	{
+		m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
+		return std::make_unique<Simulation>(m_nodes.size());
+	}
+
+	void compile_plane(Simulation *sim, const node_dep &dep) noexcept
+	{
+		Node *node = dep.first;
+		unsigned plane = dep.second;
+		assert(!node->sourcesink());
+
+		node->trace_working_memory(sim);
+
+		unsigned height = node->format(plane).height;
+		for (unsigned i = 0; i < height; ++i) {
+			node->trace_access_pattern(sim, i, i + 1, plane);
+		}
+	}
+
+	void compile_simulation_result(SimulationResult &result, const Simulation &sim, bool skip_endpoints)
+	{
+		assert(result.nodes.size() == m_nodes.size());
+
+		result.step = sim.step();
+		result.no_tiling = sim.no_tiling();
+
+		for (const auto &node : m_nodes) {
 			node_id id = node->id();
-			node_result &result = nodes[id];
+			SimulationResult::node_result &node_result = result.nodes[id];
 
 			unsigned live_rows = sim.live_range(id);
 			if (!live_rows)
@@ -198,7 +322,7 @@ struct Graph::SimulationResult {
 				assert(live_rows % (1U << subsample_h) == 0);
 
 				unsigned mask = BUFFER_MAX;
-				if (!graph.m_flags.buffer_sizing_disabled) {
+				if (!m_flags.buffer_sizing_disabled) {
 					unsigned lines = live_rows >> subsample_h;
 					unsigned lines_ceil_log2 = ceil_log2(lines);
 					if (lines_ceil_log2 < std::numeric_limits<unsigned>::digits)
@@ -211,39 +335,462 @@ struct Graph::SimulationResult {
 				// External nodes are allocated by the caller.
 				if (!node->sourcesink()) {
 					unsigned buffer_lines = mask == BUFFER_MAX ? desc.height : mask + 1;
-					result.cache_size_bytes[p] = static_cast<size_t>(buffer_lines) * desc.width * desc.bytes_per_sample;
-					result.cache_stride[p] = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
-					tmp_size += result.cache_size_bytes[p];
+					node_result.cache_size_bytes[p] = static_cast<size_t>(buffer_lines) * desc.width * desc.bytes_per_sample;
+					node_result.cache_stride[p] = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
+					result.tmp_size += node_result.cache_size_bytes[p];
 				}
-				result.cache_mask[p] = mask;
+				node_result.cache_mask[p] = mask;
 			}
 
-			result.context_size = (sim.context_size(id) + 63) & ~static_cast<size_t>(63);
-			result.initial_cursor = sim.cursor_min(id);
-			tmp_size += result.context_size;
+			node_result.context_size = (sim.context_size(id) + 63) & ~static_cast<size_t>(63);
+			node_result.initial_cursor = sim.cursor_min(id);
+			result.tmp_size += node_result.context_size;
 		}
-		tmp_size += sim.scratchpad_size();
+		result.tmp_size += sim.scratchpad_size();
 
 		// Cache footprint also includes the endpoints.
 		const auto node_footprint = [&](node_id id)
 		{
-			const auto &node = graph.m_nodes[id];
+			const auto &node = m_nodes[id];
 			size_t footprint = 0;
 
 			for (unsigned p = 0; p < node->num_planes(); ++p) {
 				PlaneDescriptor desc = node->format(p);
-				unsigned mask = nodes[id].cache_mask[p];
+				unsigned mask = result.nodes[id].cache_mask[p];
 				size_t rowsize = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
 				footprint += rowsize * (mask == BUFFER_MAX ? desc.height : mask + 1);
 			}
 			return footprint;
 		};
 
-		cache_footprint = tmp_size;
-		for (node_id id : graph.m_source_ids) {
-			cache_footprint += node_footprint(id);
+		result.cache_footprint = result.tmp_size;
+		for (node_id id : m_source_ids) {
+			result.cache_footprint += node_footprint(id);
 		}
-		cache_footprint += node_footprint(graph.m_sink_id);
+		result.cache_footprint += node_footprint(m_sink_id);
+	}
+
+	void compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept
+	{
+		assert(m_simulation_result);
+
+		Node *sink = node(m_sink_id);
+
+		if (m_flags.fusion_disabled) {
+			// Even with fusion disabled, the output nodes need to be redirected to the sink.
+			for (unsigned p = 0; p < num_planes; ++p) {
+				deps[p].first->set_cache_location(deps[p].second, FrameState::cache_descriptor_offset(m_sink_id, p));
+			}
+		} else {
+			sink->apply_node_fusion();
+		}
+
+		// Lookup the per-filter memory requirements.
+		sink->trace_working_memory(sim);
+
+		// Calculate the subsampling factor.
+		unsigned sink_planes = sink->num_planes();
+		unsigned height = 0;
+		for (unsigned p = 0; p < sink_planes; ++p) {
+			height = std::max(height, sink->format(p).height);
+		}
+		for (unsigned p = 0; p < sink_planes; ++p) {
+			sim->update_step(height / sink->format(p).height);
+		}
+
+		// Trace the scanline dependency pattern.
+		for (unsigned i = 0; i < height; i += sim->step()) {
+			unsigned next = height - i < sim->step() ? height : i + sim->step();
+			sink->trace_access_pattern(sim, i, next, 0);
+		}
+
+		compile_simulation_result(*m_simulation_result, *sim, false);
+
+		// Determine if the graph can be traversed in planar order.
+		bool endpoint_visited[(GRAPH_MAX_ENDPOINTS - 1) * NODE_MAX_PLANES] = {};
+		bool planar_compatible = !m_flags.planar_disabled;
+
+		for (unsigned p = 0; p < num_planes; ++p) {
+			Node *node = deps[p].first;
+
+			for (size_t source_idx = 0; source_idx < m_source_ids.size(); ++source_idx) {
+				for (unsigned source_plane = 0; source_plane < NODE_MAX_PLANES; ++source_plane) {
+					bool reachable = node->reachable(m_source_ids[source_idx], source_plane);
+					bool &flag = endpoint_visited[source_idx * NODE_MAX_PLANES + source_plane];
+
+					if (reachable && flag) {
+						planar_compatible = false;
+						goto out;
+					}
+					if (reachable)
+						flag = true;
+				}
+			}
+		}
+	out:
+		if (!planar_compatible)
+			return;
+
+		for (unsigned p = 0; p < num_planes; ++p) {
+			sim->reset();
+			compile_plane(sim, deps[p]);
+			m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
+			compile_simulation_result(*m_planar_simulation_result[p], *sim, true);
+			m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
+		}
+	}
+
+	bool can_run_planar() const { return !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr; }
+
+	void prepare_frame_state(FrameState *state, const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
+	{
+		unsigned char *head = static_cast<unsigned char *>(tmp);
+		auto allocate = [&](auto *&ptr, size_t count) { ptr = reinterpret_cast<decltype(ptr)>(head); head += sizeof(*ptr) * count; };
+
+		new (state) FrameState{ head, m_nodes.size() };
+
+		// Realign pointer.
+		ptrdiff_t offset = head - static_cast<unsigned char *>(tmp);
+		head += static_cast<ptrdiff_t>(ALIGNMENT) - offset % static_cast<ptrdiff_t>(ALIGNMENT);
+
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+		size_t guard_page_idx = 0;
+		auto allocate_guard_page = [&]()
+		{
+			unsigned char *page = nullptr;
+			allocate(page, FrameState::guard_page_size());
+			state->set_guard_page(guard_page_idx++, page);
+		};
+#else
+		auto allocate_guard_page = []() {};
+#endif
+
+		// Allocate caches.
+		for (size_t i = 0; i < m_nodes.size(); ++i) {
+			const SimulationResult::node_result &node_sim = sim.nodes[i];
+			unsigned num_planes = node(static_cast<node_id>(i))->num_planes();
+
+			allocate_guard_page();
+			for (unsigned p = 0; p < num_planes; ++p) {
+				BufferDescriptor &cache = state->buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
+
+				unsigned char *cache_data = nullptr;
+				allocate(cache_data, node_sim.cache_size_bytes[p]);
+
+				cache.ptr = cache_data;
+				cache.stride = node_sim.cache_stride[p];
+				cache.mask = node_sim.cache_mask[p];
+			}
+		}
+
+		// Allocate filter contexts.
+		for (size_t i = 0; i < m_nodes.size(); ++i) {
+			unsigned char *context_data = nullptr;
+			allocate_guard_page();
+			allocate(context_data, sim.nodes[i].context_size);
+
+			state->set_context(static_cast<node_id>(i), context_data);
+		}
+
+		// Allocate scratchpad.
+		allocate_guard_page();
+		state->set_scratchpad(head);
+		allocate_guard_page();
+
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+		assert(guard_page_idx == FrameState::num_guard_pages(m_nodes.size()));
+		state->set_guard_page(guard_page_idx++, nullptr);
+#endif
+
+		// Setup endpoints.
+		for (size_t i = 0; i < m_source_ids.size() + 1; ++i) {
+			assert(endpoints[i].id != null_node);
+
+			std::copy_n(endpoints[i].buffer, node(endpoints[i].id)->num_planes(), &state->buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
+			state->set_callback(i, endpoints[i].id, endpoints[i].callback);
+		}
+	}
+
+	unsigned calculate_tile_width(const SimulationResult &sim, unsigned width) const
+	{
+		unsigned tile_width;
+
+		if (sim.no_tiling || m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
+			tile_width = width;
+		else if (m_tile_width)
+			tile_width = m_tile_width;
+		else
+			tile_width = auto_tile_width(m_cache_size, width, sim.cache_footprint);
+
+		assert(tile_width == width || tile_width % ALIGNMENT == 0);
+		return tile_width;
+	}
+
+	void run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const
+	{
+		std::aligned_union_t<0, FrameState> _;
+		static_assert(std::is_trivially_destructible<FrameState>::value, "destructor not allowed");
+
+		FrameState *state = reinterpret_cast<FrameState *>(&_);
+		prepare_frame_state(state, sim, endpoints, tmp);
+
+		const PlaneDescriptor &format = node->format(plane);
+		unsigned tile_width = calculate_tile_width(sim, format.width);
+
+		for (unsigned j = 0; j < format.width;) {
+			unsigned j_end = std::min(j + tile_width, format.width);
+			if (format.width - j_end < TILE_WIDTH_MIN)
+				j_end = format.width;
+
+			// Initialize cursors.
+			for (size_t i = 0; i < m_nodes.size(); ++i) {
+				state->set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
+			}
+			state->reset_initialized(m_nodes.size());
+
+			node->begin_frame(state, j, j_end, plane);
+			node->process(state, format.height, plane);
+
+			j = j_end;
+		}
+	}
+public:
+	// Optimization toggles.
+	void set_pipelining_enabled(bool enabled) { m_flags.pipelining_disabled = !enabled; }
+	void set_buffer_sizing_enabled(bool enabled) { m_flags.buffer_sizing_disabled = !enabled; }
+	void set_fusion_enabled(bool enabled) { m_flags.fusion_disabled = !enabled; }
+	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }
+	void set_tiling_enabled(bool enabled) { m_flags.tiling_disabled = !enabled; }
+
+	void set_cache_size(size_t cache_size) { m_cache_size = cache_size; }
+	void set_tile_width(unsigned tile_width) { m_tile_width = (tile_width + ALIGNMENT_MASK) & ~ALIGNMENT_MASK; }
+
+	unsigned get_tile_width(bool with_callbacks) const
+	{
+		if (m_sink_id < 0)
+			throw std::invalid_argument{ "sink not set" };
+
+		Node *sink = node(m_sink_id);
+
+		if (with_callbacks || !can_run_planar())
+			return calculate_tile_width(*m_simulation_result, sink->format(0).width);
+
+		unsigned num_planes = node(m_sink_id)->num_planes();
+		unsigned tile_width = 0;
+
+		for (unsigned p = 0; p < num_planes; ++p) {
+			unsigned tmp = calculate_tile_width(*m_planar_simulation_result[p], node(m_planar_deps[p].first)->format(m_planar_deps[p].second).width);
+			tile_width = std::max(tile_width, tmp);
+		}
+		return tile_width;
+	}
+
+	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
+	// Graphs are final once a sink has been defined. No additional nodes may be inserted.
+	node_id add_source(unsigned num_planes, const PlaneDescriptor desc[])
+	{
+		if (!num_planes)
+			throw std::invalid_argument{ "endpoint must have non-zero plane count" };
+		if (num_planes > NODE_MAX_PLANES)
+			throw std::invalid_argument{ "maximum number of endpoint planes exceeded" };
+		if (m_source_ids.size() >= GRAPH_MAX_ENDPOINTS - 1)
+			throw std::invalid_argument{ "maximum number of sources exceeded" };
+
+		for (unsigned p = 0; p < num_planes; ++p) {
+			validate_plane_desc(desc[p]);
+		}
+
+		m_source_ids.reserve(GRAPH_MAX_ENDPOINTS - 1);
+
+		std::unique_ptr<Node> node = make_source_node(next_node_id(), num_planes, desc);
+		node_id id = node->id();
+		add_node(std::move(node));
+		m_source_ids.push_back(id);
+		return id;
+	}
+
+	node_id add_transform(const Filter *filter, const node_dep_desc deps[])
+	{
+		if (m_flags.pipelining_disabled) {
+			m_pipeline_wrappers.push_back(std::make_unique<PipelineDisableFilter>(filter));
+			filter = m_pipeline_wrappers.back().get();
+		}
+
+		try {
+			return add_transform_internal(filter, deps);
+		} catch (...) {
+			if (m_flags.pipelining_disabled)
+				m_pipeline_wrappers.pop_back();
+			throw;
+		}
+	}
+
+	node_id add_sink(unsigned num_planes, const node_dep_desc deps[])
+	{
+		if (!num_planes)
+			throw std::invalid_argument{ "endpoint must have non-zero plane count" };
+		if (num_planes > NODE_MAX_PLANES)
+			throw std::invalid_argument{ "maximum number of endpoint planes exceeded" };
+		if (m_sink_id >= 0)
+			throw std::invalid_argument{ "sink already set" };
+
+		auto original_resolved_deps = resolve_node_deps(num_planes, deps);
+		size_t original_node_count = m_nodes.size();
+
+		auto resolved_deps = original_resolved_deps;
+		std::unique_ptr<Simulation> sim;
+
+		try {
+			for (unsigned p = 0; p < num_planes; ++p) {
+				// Sink node does not copy anything. Insert copy filters where needed.
+				if (!resolved_deps[p].first->sourcesink())
+					continue;
+
+				node_dep_desc copy_deps[FILTER_MAX_DEPS] = { deps[p] };
+				auto filter = std::make_unique<CopyFilter>(resolved_deps[p].first->format(resolved_deps[p].second));
+
+				node_id copy_id = add_transform_internal(filter.get(), copy_deps);
+				m_copy_filters[p] = std::move(filter);
+				resolved_deps[p].first = node(copy_id);
+				resolved_deps[p].second = 0;
+			}
+
+			for (unsigned p = 0; p < num_planes; ++p) {
+				resolved_deps[p].first->add_ref(resolved_deps[p].second);
+			}
+
+			std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
+			node_id id = node->id();
+			add_node(std::move(node));
+			m_sink_id = id;
+
+			// Compilation is irreversible. Run any steps that could fail upfront.
+			sim = begin_compile(num_planes);
+		} catch (...) {
+			// Delete invalid simulation results.
+			for (unsigned p = 0; p < num_planes; ++p) {
+				m_planar_simulation_result[p].reset();
+			}
+			m_simulation_result.reset();
+
+			// Unreference the output nodes.
+			for (unsigned p = 0; p < num_planes; ++p) {
+				resolved_deps[p].first->dec_ref(resolved_deps[p].second);
+				if (resolved_deps[p] != original_resolved_deps[p])
+					original_resolved_deps[p].first->dec_ref(original_resolved_deps[p].second);
+			}
+
+			// Remove inserted copy and sink nodes.
+			m_nodes.resize(original_node_count);
+			m_sink_id = null_node;
+
+			// Destroy all copy filters.
+			for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
+				m_copy_filters[p].reset();
+			}
+			throw;
+		}
+
+		compile(sim.get(), num_planes, resolved_deps.data());
+		return m_sink_id;
+	}
+
+	// Runtime execution methods. The sink node must be defined.
+	size_t get_cache_footprint(bool with_callbacks) const
+	{
+		if (m_sink_id < 0)
+			throw std::invalid_argument{ "sink not set" };
+
+		size_t interleaved_footprint = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->cache_footprint;
+		if (with_callbacks || !can_run_planar())
+			return interleaved_footprint;
+
+		size_t size = 0;
+		for (const auto &result : m_planar_simulation_result) {
+			if (!result)
+				break;
+			size = std::max(size, result->cache_footprint);
+		}
+		return FrameState::metadata_size(m_nodes.size()) + size;
+	}
+
+	size_t get_tmp_size(bool with_callbacks) const
+	{
+		if (m_sink_id < 0)
+			throw std::invalid_argument{ "sink not set" };
+
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+		size_t guard_page_size = FrameState::guard_page_size() * FrameState::num_guard_pages(m_nodes.size());
+#else
+		size_t guard_page_size = 0;
+#endif
+
+		size_t interleaved_size = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size + guard_page_size;
+		if (with_callbacks || !can_run_planar())
+			return interleaved_size;
+
+		size_t size = 0;
+		for (const auto &result : m_planar_simulation_result) {
+			if (!result)
+				break;
+			size = std::max(size, result->tmp_size);
+		}
+		return FrameState::metadata_size(m_nodes.size()) + size + guard_page_size;
+	}
+
+	BufferingRequirement get_buffering_requirement() const
+	{
+		if (m_sink_id < 0)
+			throw std::invalid_argument{ "sink not set" };
+
+		assert(m_source_ids.size() < GRAPH_MAX_ENDPOINTS);
+
+		BufferingRequirement buffering{};
+		size_t idx = 0;
+
+		auto max_buffering = [=](node_id id)
+		{
+			Node *node = this->node(id);
+			unsigned planes = node->num_planes();
+			unsigned buffering = 0;
+
+			for (unsigned p = 0; p < planes; ++p) {
+				buffering = std::max(buffering, m_simulation_result->nodes[id].cache_mask[p]);
+			}
+			return buffering;
+		};
+
+		for (node_id id : m_source_ids) {
+			buffering[idx++] = { id, max_buffering(id) };
+		}
+		buffering[idx++] = { m_sink_id, max_buffering(m_sink_id) };
+
+		return buffering;
+	}
+
+	void run(const EndpointConfiguration &endpoints, void *tmp) const
+	{
+		if (m_sink_id < 0)
+			throw std::invalid_argument{ "sink not set" };
+
+		bool planar = can_run_planar();
+		if (planar) {
+			auto endpoints_begin = endpoints.begin();
+			auto endpoints_end = endpoints.begin() + m_source_ids.size() + 1;
+			planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
+		}
+
+		Node *sink = node(m_sink_id);
+
+		if (planar) {
+			unsigned num_planes = sink->num_planes();
+
+			for (unsigned p = 0; p < num_planes; ++p) {
+				run_node(node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_planar_deps[p].second, tmp);
+			}
+		} else {
+			run_node(sink, *m_simulation_result, endpoints, 0, tmp);
+		}
 	}
 };
 
@@ -255,521 +802,60 @@ void Graph::Callback::operator()(unsigned i, unsigned left, unsigned right) cons
 }
 
 
-Graph::Graph() = default;
+GraphImpl *GraphImpl::from(Graph *graph) noexcept { return dynamic_cast<GraphImpl *>(graph); }
 
-Graph::~Graph() = default;
+GraphImpl::GraphImpl() : m_impl(std::make_unique<impl>()) {}
+GraphImpl::GraphImpl(GraphImpl &&other) noexcept = default;
+GraphImpl::~GraphImpl() = default;
+GraphImpl &GraphImpl::operator=(GraphImpl &&other) noexcept = default;
 
-node_id Graph::next_node_id() const { return static_cast<node_id>(m_nodes.size()); }
+void GraphImpl::set_pipelining_enabled(bool enabled) { m_impl->set_pipelining_enabled(enabled); }
+void GraphImpl::set_buffer_sizing_enabled(bool enabled) { m_impl->set_buffer_sizing_enabled(enabled); }
+void GraphImpl::set_fusion_enabled(bool enabled) { m_impl->set_fusion_enabled(enabled); }
+void GraphImpl::set_planar_enabled(bool enabled) { m_impl->set_planar_enabled(enabled); }
+void GraphImpl::set_tiling_enabled(bool enabled) { m_impl->set_tiling_enabled(enabled); }
 
-Node *Graph::node(node_id id) const { return m_nodes[id].get(); }
+void GraphImpl::set_cache_size(size_t cache_size) { m_impl->set_cache_size(cache_size); }
+void GraphImpl::set_tile_width(unsigned tile_width) { m_impl->set_tile_width(tile_width); }
 
-Node *Graph::lookup_node(node_id id) const
+unsigned GraphImpl::get_tile_width(bool with_callbacks) const
 {
-	if (id < 0)
-		throw std::range_error{ "null node" };
-	if (static_cast<size_t>(id) >= m_nodes.size())
-		throw std::range_error{ "id out of range" };
-	return node(id);
+	return m_impl->get_tile_width(with_callbacks);
 }
 
-std::array<node_dep, NODE_MAX_PLANES> Graph::resolve_node_deps(unsigned num_deps, const node_dep_desc deps[]) const
+node_id GraphImpl::add_source(unsigned num_planes, const PlaneDescriptor desc[])
 {
-	assert(num_deps <= NODE_MAX_PLANES);
-
-	std::array<node_dep, NODE_MAX_PLANES> resolved_deps;
-
-	for (unsigned i = 0; i < num_deps; ++i) {
-		Node *node = lookup_node(deps[i].first);
-		if (deps[i].second >= node->num_planes())
-			throw std::range_error{ "plane number out of range" };
-
-		resolved_deps[i] = { node, deps[i].second };
-	}
-
-	return resolved_deps;
+	return m_impl->add_source(num_planes, desc);
 }
 
-void Graph::reserve_next_node()
+node_id GraphImpl::add_transform(const Filter *filter, const node_dep_desc deps[])
 {
-	if (m_nodes.size() > node_id_max)
-		throw std::bad_alloc{};
-
-	m_nodes.reserve(m_nodes.size() + 1);
+	return m_impl->add_transform(filter, deps);
 }
 
-void Graph::add_node(std::unique_ptr<Node> node)
+node_id GraphImpl::add_sink(unsigned num_planes, const node_dep_desc deps[])
 {
-	if (m_nodes.size() > node_id_max)
-		throw std::bad_alloc{};
-
-	assert(node->id() == m_nodes.size());
-	m_nodes.push_back(std::move(node));
+	return m_impl->add_sink(num_planes, deps);
 }
 
-std::unique_ptr<Simulation> Graph::begin_compile(unsigned num_planes)
+size_t GraphImpl::get_cache_footprint(bool with_callbacks) const
 {
-	m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
-	return std::make_unique<Simulation>(m_nodes.size());
+	return m_impl->get_cache_footprint(with_callbacks);
 }
 
-void Graph::compile_plane(Simulation *sim, const node_dep &dep) noexcept
+size_t GraphImpl::get_tmp_size(bool with_callbacks) const
 {
-	Node *node = dep.first;
-	unsigned plane = dep.second;
-	assert(!node->sourcesink());
-
-	node->trace_working_memory(sim);
-
-	unsigned height = node->format(plane).height;
-	for (unsigned i = 0; i < height; ++i) {
-		node->trace_access_pattern(sim, i, i + 1, plane);
-	}
+	return m_impl->get_tmp_size(with_callbacks);
 }
 
-void Graph::compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept
+Graph::BufferingRequirement GraphImpl::get_buffering_requirement() const
 {
-	assert(m_simulation_result);
-
-	Node *sink = node(m_sink_id);
-
-	if (m_flags.fusion_disabled) {
-		// Even with fusion disabled, the output nodes need to be redirected to the sink.
-		for (unsigned p = 0; p < num_planes; ++p) {
-			deps[p].first->set_cache_location(deps[p].second, FrameState::cache_descriptor_offset(m_sink_id, p));
-		}
-	} else {
-		sink->apply_node_fusion();
-	}
-
-	// Lookup the per-filter memory requirements.
-	sink->trace_working_memory(sim);
-
-	// Calculate the subsampling factor.
-	unsigned sink_planes = sink->num_planes();
-	unsigned height = 0;
-	for (unsigned p = 0; p < sink_planes; ++p) {
-		height = std::max(height, sink->format(p).height);
-	}
-	for (unsigned p = 0; p < sink_planes; ++p) {
-		sim->update_step(height / sink->format(p).height);
-	}
-
-	// Trace the scanline dependency pattern.
-	for (unsigned i = 0; i < height; i += sim->step()) {
-		unsigned next = height - i < sim->step() ? height : i + sim->step();
-		sink->trace_access_pattern(sim, i, next, 0);
-	}
-
-	m_simulation_result->init(*this, *sim);
-
-	// Determine if the graph can be traversed in a planar order.
-	bool endpoint_visited[(GRAPH_MAX_ENDPOINTS - 1) * NODE_MAX_PLANES] = {};
-	bool planar_compatible = !m_flags.planar_disabled;
-
-	for (unsigned p = 0; p < num_planes; ++p) {
-		Node *node = deps[p].first;
-
-		for (size_t source_idx = 0; source_idx < m_source_ids.size(); ++source_idx) {
-			for (unsigned source_plane = 0; source_plane < NODE_MAX_PLANES; ++source_plane) {
-				bool reachable = node->reachable(m_source_ids[source_idx], source_plane);
-				bool &flag = endpoint_visited[source_idx * NODE_MAX_PLANES + source_plane];
-
-				if (reachable && flag) {
-					planar_compatible = false;
-					goto out;
-				}
-				if (reachable)
-					flag = true;
-			}
-		}
-	}
-out:
-	if (!planar_compatible)
-		return;
-
-	for (unsigned p = 0; p < num_planes; ++p) {
-		sim->reset();
-		compile_plane(sim, deps[p]);
-		m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
-		m_planar_simulation_result[p]->init(*this, *sim, true);
-		m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
-	}
+	return m_impl->get_buffering_requirement();
 }
 
-bool Graph::can_run_planar() const
+void GraphImpl::run(const EndpointConfiguration &endpoints, void *tmp) const
 {
-	return !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr;
-}
-
-void Graph::prepare_frame_state(FrameState *state, const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
-{
-	unsigned char *head = static_cast<unsigned char *>(tmp);
-	auto allocate = [&](auto *&ptr, size_t count) { ptr = reinterpret_cast<decltype(ptr)>(head); head += sizeof(*ptr) * count; };
-
-	new (state) FrameState{ head, m_nodes.size() };
-
-	// Realign pointer.
-	ptrdiff_t offset = head - static_cast<unsigned char *>(tmp);
-	head += 64 - offset % 64;
-
-#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
-	size_t guard_page_idx = 0;
-	auto allocate_guard_page = [&]()
-	{
-		unsigned char *page = nullptr;
-		allocate(page, FrameState::guard_page_size());
-		state->set_guard_page(guard_page_idx++, page);
-	};
-#else
-	auto allocate_guard_page = []() {};
-#endif
-
-	// Allocate caches.
-	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		const SimulationResult::node_result &node_sim = sim.nodes[i];
-		unsigned num_planes = node(static_cast<node_id>(i))->num_planes();
-
-		allocate_guard_page();
-		for (unsigned p = 0; p < num_planes; ++p) {
-			BufferDescriptor &cache = state->buffer(FrameState::cache_descriptor_offset(static_cast<node_id>(i), p));
-
-			unsigned char *cache_data = nullptr;
-			allocate(cache_data, node_sim.cache_size_bytes[p]);
-
-			cache.ptr = cache_data;
-			cache.stride = node_sim.cache_stride[p];
-			cache.mask = node_sim.cache_mask[p];
-		}
-	}
-
-	// Allocate filter contexts.
-	for (size_t i = 0; i < m_nodes.size(); ++i) {
-		unsigned char *context_data = nullptr;
-		allocate_guard_page();
-		allocate(context_data, sim.nodes[i].context_size);
-
-		state->set_context(static_cast<node_id>(i), context_data);
-	}
-
-	// Allocate scratchpad.
-	allocate_guard_page();
-	state->set_scratchpad(head);
-	allocate_guard_page();
-
-#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
-	assert(guard_page_idx == FrameState::num_guard_pages(m_nodes.size()));
-	state->set_guard_page(guard_page_idx++, nullptr);
-#endif
-
-	// Setup endpoints.
-	for (size_t i = 0; i < m_source_ids.size() + 1; ++i) {
-		assert(endpoints[i].id != null_node);
-
-		std::copy_n(endpoints[i].buffer, node(endpoints[i].id)->num_planes(), &state->buffer(FrameState::cache_descriptor_offset(endpoints[i].id, 0)));
-		state->set_callback(i, endpoints[i].id, endpoints[i].callback);
-	}
-}
-
-unsigned Graph::calculate_tile_width(const SimulationResult &sim, unsigned width) const
-{
-	unsigned tile_width;
-
-	if (sim.no_tiling || m_flags.buffer_sizing_disabled || m_flags.tiling_disabled)
-		tile_width = width;
-	else if (m_tile_width)
-		tile_width = m_tile_width;
-	else
-		tile_width = auto_tile_width(m_cache_size, width, sim.cache_footprint);
-
-	assert(tile_width == width || tile_width % 64 == 0);
-	return tile_width;
-}
-
-void Graph::run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const
-{
-	std::aligned_union_t<0, FrameState> _;
-	static_assert(std::is_trivially_destructible<FrameState>::value, "destructor not allowed");
-
-	FrameState *state = reinterpret_cast<FrameState *>(& _);
-	prepare_frame_state(state, sim, endpoints, tmp);
-
-	const PlaneDescriptor &format = node->format(plane);
-	unsigned tile_width = calculate_tile_width(sim, format.width);
-
-	for (unsigned j = 0; j < format.width;) {
-		unsigned j_end = std::min(j + tile_width, format.width);
-		if (format.width - j_end < TILE_WIDTH_MIN)
-			j_end = format.width;
-
-		// Initialize cursors.
-		for (size_t i = 0; i < m_nodes.size(); ++i) {
-			state->set_cursor(static_cast<node_id>(i), sim.nodes[i].initial_cursor);
-		}
-		state->reset_initialized(m_nodes.size());
-
-		node->begin_frame(state, j, j_end, plane);
-		node->process(state, format.height, plane);
-
-		j = j_end;
-	}
-}
-
-node_id Graph::add_source(unsigned num_planes, const PlaneDescriptor desc[])
-{
-	if (!num_planes)
-		throw std::invalid_argument{ "endpoint must have non-zero plane count" };
-	if (num_planes > NODE_MAX_PLANES)
-		throw std::invalid_argument{ "maximum number of endpoint planes exceeded" };
-	if (m_source_ids.size() >= GRAPH_MAX_ENDPOINTS - 1)
-		throw std::invalid_argument{ "maximum number of sources exceeded" };
-
-	for (unsigned p = 0; p < num_planes; ++p) {
-		validate_plane_desc(desc[p]);
-	}
-
-	m_source_ids.reserve(GRAPH_MAX_ENDPOINTS - 1);
-
-	std::unique_ptr<Node> node = make_source_node(next_node_id(), num_planes, desc);
-	node_id id = node->id();
-	add_node(std::move(node));
-	m_source_ids.push_back(id);
-	return id;
-}
-
-node_id Graph::add_transform_internal(const Filter *filter, const node_dep_desc deps[])
-{
-	const FilterDescriptor &desc = filter->descriptor();
-	if (desc.num_deps > FILTER_MAX_DEPS)
-		throw std::invalid_argument{ "maximum number of filter dependencies exceeded" };
-	if (!desc.num_planes)
-		throw std::invalid_argument{ "filter must have non-zero plane count" };
-	if (desc.num_planes > FILTER_MAX_PLANES)
-		throw std::invalid_argument{ "maximum number of filter outputs exceeded" };
-
-	validate_plane_desc(desc.format);
-
-	auto resolved_deps = resolve_node_deps(desc.num_deps, deps);
-
-	for (unsigned p = 1; p < desc.num_deps; ++p) {
-		const PlaneDescriptor luma_desc = resolved_deps[0].first->format(resolved_deps[0].second);
-		const PlaneDescriptor desc = resolved_deps[p].first->format(resolved_deps[p].second);
-
-		if (luma_desc.width != desc.width || luma_desc.height != desc.height)
-			throw std::runtime_error{ "must have identical dimensions across all dependencies" };
-	}
-
-	std::unique_ptr<Node> node = make_transform_node(next_node_id(), filter, resolved_deps.data());
-	node_id id = node->id();
-	add_node(std::move(node));
-
-	for (unsigned p = 0; p < desc.num_deps; ++p) {
-		resolved_deps[p].first->add_ref(resolved_deps[p].second);
-	}
-
-	return id;
-}
-
-node_id Graph::add_transform(const Filter *filter, const node_dep_desc deps[])
-{
-	if (m_flags.pipelining_disabled) {
-		m_pipeline_wrappers.push_back(std::make_unique<PipelineDisableFilter>(filter));
-		filter = m_pipeline_wrappers.back().get();
-	}
-
-	try {
-		return add_transform_internal(filter, deps);
-	} catch (...) {
-		if (m_flags.pipelining_disabled)
-			m_pipeline_wrappers.pop_back();
-		throw;
-	}
-}
-
-node_id Graph::add_sink(unsigned num_planes, const node_dep_desc deps[])
-{
-	if (!num_planes)
-		throw std::invalid_argument{ "endpoint must have non-zero plane count" };
-	if (num_planes > NODE_MAX_PLANES)
-		throw std::invalid_argument{ "maximum number of endpoint planes exceeded" };
-	if (m_sink_id >= 0)
-		throw std::invalid_argument{ "sink already set" };
-
-	auto original_resolved_deps = resolve_node_deps(num_planes, deps);
-	size_t original_node_count = m_nodes.size();
-
-	auto resolved_deps = original_resolved_deps;
-	std::unique_ptr<Simulation> sim;
-
-	try {
-		for (unsigned p = 0; p < num_planes; ++p) {
-			// Sink node does not copy anything. Insert copy filters where needed.
-			if (!resolved_deps[p].first->sourcesink())
-				continue;
-
-			node_dep_desc copy_deps[FILTER_MAX_DEPS] = { deps[p] };
-			auto filter = std::make_unique<CopyFilter>(resolved_deps[p].first->format(resolved_deps[p].second));
-
-			node_id copy_id = add_transform_internal(filter.get(), copy_deps);
-			m_copy_filters[p] = std::move(filter);
-			resolved_deps[p].first = node(copy_id);
-			resolved_deps[p].second = 0;
-		}
-
-		for (unsigned p = 0; p < num_planes; ++p) {
-			resolved_deps[p].first->add_ref(resolved_deps[p].second);
-		}
-
-		std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
-		node_id id = node->id();
-		add_node(std::move(node));
-		m_sink_id = id;
-
-		// Compilation is irreversible. Run any steps that could fail upfront.
-		sim = begin_compile(num_planes);
-	} catch (...) {
-		// Delete invalid simulation results.
-		for (unsigned p = 0; p < num_planes; ++p) {
-			m_planar_simulation_result[p].reset();
-		}
-		m_simulation_result.reset();
-
-		// Unreference the output nodes.
-		for (unsigned p = 0; p < num_planes; ++p) {
-			resolved_deps[p].first->dec_ref(resolved_deps[p].second);
-			if (resolved_deps[p] != original_resolved_deps[p])
-				original_resolved_deps[p].first->dec_ref(original_resolved_deps[p].second);
-		}
-
-		// Remove inserted copy and sink nodes.
-		m_nodes.resize(original_node_count);
-		m_sink_id = null_node;
-
-		// Destroy all copy filters.
-		for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
-			m_copy_filters[p].reset();
-		}
-		throw;
-	}
-
-	compile(sim.get(), num_planes, resolved_deps.data());
-	return m_sink_id;
-}
-
-size_t Graph::get_cache_footprint(bool with_callbacks) const
-{
-	if (m_sink_id < 0)
-		throw std::invalid_argument{ "sink not set" };
-
-	size_t interleaved_footprint = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->cache_footprint;
-	if (with_callbacks || !can_run_planar())
-		return interleaved_footprint;
-
-	size_t size = 0;
-	for (const auto &result : m_planar_simulation_result) {
-		if (!result)
-			break;
-		size = std::max(size, result->cache_footprint);
-	}
-	return FrameState::metadata_size(m_nodes.size()) + size;
-}
-
-size_t Graph::get_tmp_size(bool with_callbacks) const
-{
-	if (m_sink_id < 0)
-		throw std::invalid_argument{ "sink not set" };
-
-#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
-	size_t guard_page_size = FrameState::guard_page_size() * FrameState::num_guard_pages(m_nodes.size());
-#else
-	size_t guard_page_size = 0;
-#endif
-
-	size_t interleaved_size = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->tmp_size + guard_page_size;
-	if (with_callbacks || !can_run_planar())
-		return interleaved_size;
-
-	size_t size = 0;
-	for (const auto &result : m_planar_simulation_result) {
-		if (!result)
-			break;
-		size = std::max(size, result->tmp_size);
-	}
-	return FrameState::metadata_size(m_nodes.size()) + size + guard_page_size;
-}
-
-unsigned Graph::get_tile_width(bool with_callbacks) const
-{
-	if (m_sink_id < 0)
-		throw std::invalid_argument{ "sink not set" };
-
-	Node *sink = node(m_sink_id);
-
-	if (with_callbacks || !can_run_planar())
-		return calculate_tile_width(*m_simulation_result, sink->format(0).width);
-
-	unsigned num_planes = node(m_sink_id)->num_planes();
-	unsigned tile_width = 0;
-
-	for (unsigned p = 0; p < num_planes; ++p) {
-		unsigned tmp = calculate_tile_width(*m_planar_simulation_result[p], node(m_planar_deps[p].first)->format(m_planar_deps[p].second).width);
-		tile_width = std::max(tile_width, tmp);
-	}
-	return tile_width;
-}
-
-Graph::BufferingRequirement Graph::get_buffering_requirement() const
-{
-	if (m_sink_id < 0)
-		throw std::invalid_argument{ "sink not set" };
-
-	assert(m_source_ids.size() < GRAPH_MAX_ENDPOINTS);
-
-	BufferingRequirement buffering{};
-	size_t idx = 0;
-
-	auto max_buffering = [=](node_id id)
-	{
-		Node *node = this->node(id);
-		unsigned planes = node->num_planes();
-		unsigned buffering = 0;
-
-		for (unsigned p = 0; p < planes; ++p) {
-			buffering = std::max(buffering, m_simulation_result->nodes[id].cache_mask[p]);
-		}
-		return buffering;
-	};
-
-	for (node_id id : m_source_ids) {
-		buffering[idx++] = { id, max_buffering(id) };
-	}
-	buffering[idx++] = { m_sink_id, max_buffering(m_sink_id) };
-
-	return buffering;
-}
-
-void Graph::run(const EndpointConfiguration &endpoints, void *tmp) const
-{
-	if (m_sink_id < 0)
-		throw std::invalid_argument{ "sink not set" };
-
-	bool planar = can_run_planar();
-	if (planar) {
-		auto endpoints_begin = endpoints.begin();
-		auto endpoints_end = endpoints.begin() + m_source_ids.size() + 1;
-		planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
-	}
-
-	Node *sink = node(m_sink_id);
-
-	if (planar) {
-		unsigned num_planes = sink->num_planes();
-
-		for (unsigned p = 0; p < num_planes; ++p) {
-			run_node(node(m_planar_deps[p].first), *m_planar_simulation_result[p], endpoints, m_planar_deps[p].second, tmp);
-		}
-	} else {
-		run_node(sink, *m_simulation_result, endpoints, 0, tmp);
-	}
+	return m_impl->run(endpoints, tmp);
 }
 
 } // namespace graphengine

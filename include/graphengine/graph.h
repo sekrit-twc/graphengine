@@ -6,8 +6,6 @@
 #include <array>
 #include <cstddef>
 #include <memory>
-#include <utility>
-#include <vector>
 #include "graphengine/types.h"
 
 namespace graphengine {
@@ -19,6 +17,7 @@ class FrameState;
 
 class Graph {
 public:
+	// Thrown on non-zero callback return value.
 	struct CallbackError { int code; };
 
 	/**
@@ -60,6 +59,7 @@ public:
 		void operator()(unsigned i, unsigned left, unsigned right) const;
 	};
 
+	// Sinks and sources.
 	struct Endpoint {
 		node_id id;
 		BufferDescriptor buffer[NODE_MAX_PLANES];
@@ -67,87 +67,72 @@ public:
 	};
 	typedef std::array<Endpoint, GRAPH_MAX_ENDPOINTS> EndpointConfiguration;
 	typedef std::array<std::pair<node_id, unsigned>, GRAPH_MAX_ENDPOINTS> BufferingRequirement;
-private:
-	struct SimulationResult;
 
-	std::vector<std::unique_ptr<Filter>> m_pipeline_wrappers;
-	std::unique_ptr<Filter> m_copy_filters[NODE_MAX_PLANES];
-	std::vector<std::unique_ptr<Node>> m_nodes;
-	std::vector<node_id> m_source_ids;
-	std::unique_ptr<SimulationResult> m_simulation_result;
-	std::unique_ptr<SimulationResult> m_planar_simulation_result[NODE_MAX_PLANES];
-	node_dep_desc m_planar_deps[NODE_MAX_PLANES];
-	node_id m_sink_id = null_node;
-	size_t m_cache_size = 0;
-	unsigned m_tile_width = 0;
-
-	struct {
-		unsigned pipelining_disabled : 1;
-		unsigned buffer_sizing_disabled : 1;
-		unsigned fusion_disabled : 1;
-		unsigned planar_disabled : 1;
-		unsigned tiling_disabled : 1;
-	} m_flags = {};
-
-	node_id next_node_id() const;
-
-	Node *node(node_id id) const;
-	Node *lookup_node(node_id id) const;
-
-	std::array<node_dep, NODE_MAX_PLANES> resolve_node_deps(unsigned num_deps, const node_dep_desc deps[]) const;
-
-	void reserve_next_node();
-
-	void add_node(std::unique_ptr<Node> node);
-
-	node_id add_transform_internal(const Filter *filter, const node_dep_desc deps[]);
-
-	std::unique_ptr<Simulation> begin_compile(unsigned num_planes);
-
-	void compile_plane(Simulation *sim, const node_dep &dep) noexcept;
-
-	void compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept;
-
-	bool can_run_planar() const;
-
-	void prepare_frame_state(FrameState *state, const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const;
-
-	unsigned calculate_tile_width(const SimulationResult &sim, unsigned width) const;
-
-	void run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const;
-public:
-	Graph();
-
-	~Graph();
-
-	// Optimization toggles.
-	void set_pipelining_enabled(bool enabled) { m_flags.pipelining_disabled = !enabled; }
-	void set_buffer_sizing_enabled(bool enabled) { m_flags.buffer_sizing_disabled = !enabled; }
-	void set_fusion_enabled(bool enabled) { m_flags.fusion_disabled = !enabled; }
-	void set_planar_enabled(bool enabled) { m_flags.planar_disabled = !enabled; }
-	void set_tiling_enabled(bool enabled) { m_flags.tiling_disabled = !enabled; }
-
-	void set_cache_size(size_t cache_size) { m_cache_size = cache_size; }
-	void set_tile_width(unsigned tile_width) { m_tile_width = (tile_width + 63) & ~63U; }
+	virtual ~Graph() = default;
 
 	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
 	// Graphs are final once a sink has been defined. No additional nodes may be inserted.
-	node_id add_source(unsigned num_planes, const PlaneDescriptor desc[]);
+	virtual node_id add_source(unsigned num_planes, const PlaneDescriptor desc[]) = 0;
 
-	node_id add_transform(const Filter *filter, const node_dep_desc deps[]);
+	virtual node_id add_transform(const Filter *filter, const node_dep_desc deps[]) = 0;
 
-	node_id add_sink(unsigned num_planes, const node_dep_desc deps[]);
+	virtual node_id add_sink(unsigned num_planes, const node_dep_desc deps[]) = 0;
 
 	// Runtime execution methods. The sink node must be defined.
-	size_t get_cache_footprint(bool with_callbacks = true) const;
+	virtual size_t get_cache_footprint(bool with_callbacks = true) const = 0;
 
-	size_t get_tmp_size(bool with_callbacks = true) const;
+	virtual size_t get_tmp_size(bool with_callbacks = true) const = 0;
+
+	virtual BufferingRequirement get_buffering_requirement() const = 0;
+
+	virtual void run(const EndpointConfiguration &endpoints, void *tmp) const = 0;
+};
+
+
+class GraphImpl : public Graph {
+	class impl;
+
+	std::unique_ptr<impl> m_impl;
+public:
+	static GraphImpl *from(Graph *graph) noexcept;
+	static const GraphImpl *from(const Graph *graph) noexcept { return from(const_cast<Graph *>(graph)); }
+
+	GraphImpl();
+
+	GraphImpl(GraphImpl &&other) noexcept;
+
+	~GraphImpl();
+
+	GraphImpl &operator=(GraphImpl &&other) noexcept;
+
+	// Optimization toggles.
+	void set_pipelining_enabled(bool enabled);
+	void set_buffer_sizing_enabled(bool enabled);
+	void set_fusion_enabled(bool enabled);
+	void set_planar_enabled(bool enabled);
+	void set_tiling_enabled(bool enabled);
+
+	void set_cache_size(size_t cache_size);
+	void set_tile_width(unsigned tile_width);
 
 	unsigned get_tile_width(bool with_callbacks = true) const;
 
-	BufferingRequirement get_buffering_requirement() const;
+	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
+	// Graphs are final once a sink has been defined. No additional nodes may be inserted.
+	node_id add_source(unsigned num_planes, const PlaneDescriptor desc[]) override;
 
-	void run(const EndpointConfiguration &endpoints, void *tmp) const;
+	node_id add_transform(const Filter *filter, const node_dep_desc deps[]) override;
+
+	node_id add_sink(unsigned num_planes, const node_dep_desc deps[]) override;
+
+	// Runtime execution methods. The sink node must be defined.
+	size_t get_cache_footprint(bool with_callbacks = true) const override;
+
+	size_t get_tmp_size(bool with_callbacks = true) const override;
+
+	BufferingRequirement get_buffering_requirement() const override;
+
+	void run(const EndpointConfiguration &endpoints, void *tmp) const override;
 };
 
 } // namespace graphengine

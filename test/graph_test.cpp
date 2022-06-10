@@ -65,7 +65,7 @@ TEST(GraphTest, test_add_source)
 {
 	for (unsigned n = 1; n < graphengine::NODE_MAX_PLANES; ++n) {
 		SCOPED_TRACE(n);
-		graphengine::Graph graph;
+		graphengine::GraphImpl graph;
 
 		std::vector<graphengine::PlaneDescriptor> desc(n);
 		for (unsigned nn = 0; nn < n; ++nn) {
@@ -80,7 +80,7 @@ TEST(GraphTest, test_add_source)
 TEST(GraphTest, test_add_source_invalid_desc)
 {
 	for (const auto &format : invalid_node_formats()) {
-		graphengine::Graph graph;
+		graphengine::GraphImpl graph;
 		EXPECT_ANY_THROW(graph.add_source(format.first, format.second.data()));
 	}
 }
@@ -93,7 +93,7 @@ TEST(GraphTest, test_add_transform)
 		for (unsigned num_planes = 1; num_planes < graphengine::FILTER_MAX_PLANES; ++num_planes) {
 			SCOPED_TRACE(num_planes);
 
-			graphengine::Graph graph;
+			graphengine::GraphImpl graph;
 			for (unsigned n = 0; n < graphengine::FILTER_MAX_DEPS; ++n) {
 				std::vector<graphengine::PlaneDescriptor> desc(graphengine::NODE_MAX_PLANES, { 640, 480, 1 });
 				graph.add_source(static_cast<unsigned>(desc.size()), desc.data());
@@ -116,7 +116,7 @@ TEST(GraphTest, test_add_transform)
 
 TEST(GraphTest, test_add_transform_zero_planes)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -129,7 +129,7 @@ TEST(GraphTest, test_add_transform_zero_planes)
 
 TEST(GraphTest, test_add_transform_excess_deps)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -142,7 +142,7 @@ TEST(GraphTest, test_add_transform_excess_deps)
 
 TEST(GraphTest, test_add_transform_excess_planes)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -159,7 +159,7 @@ TEST(GraphTest, test_add_transform_invalid_desc)
 		if (format.first != 1)
 			continue;
 
-		graphengine::Graph graph;
+		graphengine::GraphImpl graph;
 		graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 		graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -172,7 +172,7 @@ TEST(GraphTest, test_add_transform_invalid_desc)
 
 TEST(GraphTest, test_add_transform_bad_dep)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -191,7 +191,7 @@ TEST(GraphTest, test_add_transform_bad_dep)
 
 TEST(GraphTest, test_add_transform_dim_mismatch)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -207,7 +207,7 @@ TEST(GraphTest, test_add_transform_dim_mismatch)
 
 TEST(GraphTest, test_add_sink)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	std::vector<graphengine::PlaneDescriptor> desc(graphengine::NODE_MAX_PLANES, { 640, 480, 1 });
 	graphengine::node_id source_id = graph.add_source(static_cast<unsigned>(desc.size()), desc.data());
 
@@ -222,7 +222,7 @@ TEST(GraphTest, test_add_sink)
 
 TEST(GraphTest, test_add_sink_zero_planes)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -231,7 +231,7 @@ TEST(GraphTest, test_add_sink_zero_planes)
 
 TEST(GraphTest, test_add_sink_excess_planes)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 	std::vector<graphengine::node_dep_desc> deps(graphengine::NODE_MAX_PLANES + 1, { source_id, 0 });
@@ -241,7 +241,7 @@ TEST(GraphTest, test_add_sink_excess_planes)
 
 TEST(GraphTest, test_add_sink_bad_subsampling)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source0 = graph.add_source(1, &desc);
 
@@ -255,7 +255,7 @@ TEST(GraphTest, test_add_sink_bad_subsampling)
 
 TEST(GraphTest, test_add_sink_bad_dep)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
@@ -273,7 +273,7 @@ TEST(GraphTest, test_add_sink_bad_dep)
 
 TEST(GraphTest, test_add_sink_twice)
 {
-	graphengine::Graph graph;
+	graphengine::GraphImpl graph;
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 	graphengine::node_dep_desc dep = { source_id, 0 };

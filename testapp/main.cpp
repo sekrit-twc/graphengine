@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <vector>
 #include <graphengine/filter.h>
 #include <graphengine/graph.h>
 #include "aligned_malloc.h"
@@ -210,7 +211,7 @@ int main(int argc, char **argv)
 		unsigned overlay_h = overlay_frame.format[0].height;
 
 		std::vector<std::unique_ptr<graphengine::Filter>> filters;
-		graphengine::Graph filtergraph;
+		graphengine::GraphImpl filtergraph;
 
 		filtergraph.set_pipelining_enabled(args.pipeline);
 		filtergraph.set_buffer_sizing_enabled(args.autosize);

@@ -14,7 +14,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "filter.h"
 #include "graphengine/filter.h"
 #include "graphengine/filter_validation.h"
 #include "graphengine/types.h"

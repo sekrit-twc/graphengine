@@ -617,7 +617,7 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 	auto do_validate = [&](auto hooks)
 	{
 		std::vector<std::unique_ptr<ValidationFilter>> filters;
-		graphengine::Graph graph;
+		graphengine::GraphImpl graph;
 		hooks(&graph);
 
 		Script script{ &m_factories, &filters, &graph };
@@ -638,8 +638,8 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		SCOPED_TRACE("nonplanar+untiled");
 		do_validate([](graphengine::Graph *graph)
 		{
-			graph->set_planar_enabled(false);
-			graph->set_tiling_enabled(false);
+			graphengine::GraphImpl::from(graph)->set_planar_enabled(false);
+			graphengine::GraphImpl::from(graph)->set_tiling_enabled(false);
 		});
 	}
 
@@ -647,9 +647,9 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		SCOPED_TRACE("nonplanar+tiled");
 		do_validate([](graphengine::Graph *graph)
 		{
-			graph->set_planar_enabled(false);
-			graph->set_tiling_enabled(true);
-			graph->set_tile_width(128);
+			graphengine::GraphImpl::from(graph)->set_planar_enabled(false);
+			graphengine::GraphImpl::from(graph)->set_tiling_enabled(true);
+			graphengine::GraphImpl::from(graph)->set_tile_width(128);
 		});
 	}
 
@@ -657,8 +657,8 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		SCOPED_TRACE("planar+untiled");
 		do_validate([](graphengine::Graph *graph)
 		{
-			graph->set_planar_enabled(true);
-			graph->set_tiling_enabled(false);
+			graphengine::GraphImpl::from(graph)->set_planar_enabled(true);
+			graphengine::GraphImpl::from(graph)->set_tiling_enabled(false);
 		});
 	}
 
@@ -666,9 +666,9 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		SCOPED_TRACE("planar+tiled");
 		do_validate([](graphengine::Graph *graph)
 		{
-			graph->set_planar_enabled(true);
-			graph->set_tiling_enabled(true);
-			graph->set_tile_width(128);
+			graphengine::GraphImpl::from(graph)->set_planar_enabled(true);
+			graphengine::GraphImpl::from(graph)->set_tiling_enabled(true);
+			graphengine::GraphImpl::from(graph)->set_tile_width(128);
 		});
 	}
 }
