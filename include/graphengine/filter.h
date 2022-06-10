@@ -49,7 +49,7 @@ public:
 
 	virtual std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept = 0;
 
-	virtual void init_context(void *context) const noexcept {}
+	virtual void init_context(void *context) const noexcept = 0;
 
 	virtual void process(const BufferDescriptor in[], const BufferDescriptor out[],
 	                     unsigned i, unsigned left, unsigned right, void *context, void *tmp) const noexcept = 0;
