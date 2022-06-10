@@ -69,9 +69,11 @@ public:
 	virtual void process(FrameState *state, unsigned last_row, unsigned plane) const = 0;
 };
 
+typedef std::pair<Node *, unsigned> node_dep;
+
 
 std::unique_ptr<Node> make_source_node(node_id id, unsigned num_planes, const PlaneDescriptor desc[]);
-std::unique_ptr<Node> make_sink_node(node_id id, unsigned num_planes, const std::pair<Node *, unsigned> parents[]);
+std::unique_ptr<Node> make_sink_node(node_id id, unsigned num_planes, const node_dep parents[]);
 std::unique_ptr<Node> make_transform_node(node_id id, const Filter *filter, const node_dep deps[]);
 
 } // namespace graphengine

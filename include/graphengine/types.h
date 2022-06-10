@@ -18,9 +18,6 @@ constexpr unsigned GRAPH_MAX_ENDPOINTS = 8;
 typedef int node_id;
 typedef std::pair<node_id, unsigned> node_dep_desc;
 
-class Node;
-typedef std::pair<Node *, unsigned> node_dep;
-
 constexpr node_id null_node = -1;
 constexpr node_id node_id_max = 1023;
 
