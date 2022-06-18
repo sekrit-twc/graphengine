@@ -61,13 +61,15 @@ public:
 
 	// Sinks and sources.
 	struct Endpoint {
-		node_id id;
+		node_id id = null_node;
 		BufferDescriptor buffer[NODE_MAX_PLANES];
 		Callback callback;
 	};
 	typedef std::array<Endpoint, GRAPH_MAX_ENDPOINTS> EndpointConfiguration;
 	typedef std::array<std::pair<node_id, unsigned>, GRAPH_MAX_ENDPOINTS> BufferingRequirement;
-
+protected:
+	Graph &operator=(const Graph &) = default;
+public:
 	virtual ~Graph() = default;
 
 	// Graph construction methods. Strong exception safety. Graphs have up to 7 sources and 1 sink.
@@ -86,6 +88,29 @@ public:
 	virtual BufferingRequirement get_buffering_requirement() const = 0;
 
 	virtual void run(const EndpointConfiguration &endpoints, void *tmp) const = 0;
+};
+
+
+class SubGraph {
+public:
+	typedef std::pair<node_id, node_dep_desc> SourceMapping;
+	typedef std::array<node_dep_desc, NODE_MAX_PLANES> SinkMapping;
+protected:
+	SubGraph &operator=(const SubGraph &) = default;
+public:
+	virtual ~SubGraph() = default;
+
+	// Subgraph construction methods. Strong exception safety. Subgraphs have up to 7 sources and 1 sink.
+	// Subgraphs are final once a sink has been defined. No additional nodes may be inserted. Node IDs
+	// are local to the subgraph. Subgraph performs no validation.
+	virtual node_id add_source() = 0;
+
+	virtual node_id add_transform(const Filter *filter, const node_dep_desc deps[]) = 0;
+
+	virtual node_id add_sink(unsigned num_planes, const node_dep_desc deps[]) = 0;
+
+	// Connect subgraph to main graph.
+	virtual SinkMapping connect(Graph *graph, size_t num_sources, const SourceMapping sources[]) const = 0;
 };
 
 
@@ -133,6 +158,32 @@ public:
 	BufferingRequirement get_buffering_requirement() const override;
 
 	void run(const EndpointConfiguration &endpoints, void *tmp) const override;
+};
+
+
+class SubGraphImpl : public SubGraph {
+	class impl;
+
+	std::unique_ptr<impl> m_impl;
+public:
+	SubGraphImpl();
+
+	SubGraphImpl(SubGraphImpl &&other) noexcept;
+
+	~SubGraphImpl();
+
+	SubGraphImpl &operator=(SubGraphImpl &&other) noexcept;
+
+	// Subgraph construction methods. Strong exception safety. Subgraphs can have an arbitrary
+	// number of sources. Unlike main graphs, each source contains only one plane.
+	node_id add_source() override;
+
+	node_id add_transform(const Filter *filter, const node_dep_desc deps[]) override;
+
+	node_id add_sink(unsigned num_planes, const node_dep_desc deps[]) override;
+
+	// Connect subgraph to main graph.
+	SinkMapping connect(Graph *graph, size_t num_sources, const SourceMapping mapping[]) const override;
 };
 
 } // namespace graphengine

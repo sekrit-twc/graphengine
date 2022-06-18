@@ -752,7 +752,7 @@ public:
 		assert(m_source_ids.size() < GRAPH_MAX_ENDPOINTS);
 
 		BufferingRequirement buffering{};
-		size_t idx = 0;
+		std::fill(buffering.begin(), buffering.end(), null_dep);
 
 		auto max_buffering = [=](node_id id)
 		{
@@ -766,10 +766,10 @@ public:
 			return buffering;
 		};
 
-		for (node_id id : m_source_ids) {
-			buffering[idx++] = { id, max_buffering(id) };
+		for (size_t i = 0; i < m_source_ids.size(); ++i) {
+			buffering[i] = { m_source_ids[i], max_buffering(m_source_ids[i])};
 		}
-		buffering[idx++] = { m_sink_id, max_buffering(m_sink_id) };
+		buffering[m_source_ids.size()] = {m_sink_id, max_buffering(m_sink_id)};
 
 		return buffering;
 	}
@@ -862,6 +862,159 @@ Graph::BufferingRequirement GraphImpl::get_buffering_requirement() const
 void GraphImpl::run(const EndpointConfiguration &endpoints, void *tmp) const
 {
 	return m_impl->run(endpoints, tmp);
+}
+
+
+class SubGraphImpl::impl {
+	struct NodeEntry {
+		const Filter *filter;
+		node_dep_desc deps[FILTER_MAX_DEPS];
+
+		explicit NodeEntry(std::nullptr_t) : filter{}, deps{}
+		{
+			std::fill_n(deps, FILTER_MAX_DEPS, null_dep);
+		}
+
+		NodeEntry(const Filter *filter, const node_dep_desc deps[]) : NodeEntry{ nullptr }
+		{
+			this->filter = filter;
+			std::copy_n(deps, filter->descriptor().num_deps, this->deps);
+		}
+	};
+
+	std::vector<NodeEntry> m_nodes;
+	std::vector<node_id> m_source_ids;
+	node_id m_sink_id = null_node;
+	std::array<node_dep_desc, NODE_MAX_PLANES> m_sink_deps{};
+
+	void check_deps(unsigned num_deps, const node_dep_desc deps[]) const
+	{
+		for (unsigned p = 0; p < num_deps; ++p) {
+			if (deps[p].first >= static_cast<node_id>(m_nodes.size()))
+				throw std::range_error{ "id out of range" };
+		}
+	}
+
+	bool is_source(node_id id) const
+	{
+		return std::find(m_source_ids.begin(), m_source_ids.end(), id) != m_source_ids.end();
+	}
+public:
+	impl() { std::fill(m_sink_deps.begin(), m_sink_deps.end(), null_dep); }
+
+	node_id add_source()
+	{
+		if (m_nodes.size() > node_id_max)
+			throw std::bad_alloc{};
+
+		m_source_ids.reserve(m_source_ids.size() + 1);
+		m_nodes.reserve(m_nodes.size() + 1);
+
+		m_nodes.push_back(NodeEntry{ nullptr });
+		m_source_ids.push_back(static_cast<node_id>(m_nodes.size() - 1));
+		return m_source_ids.back();
+	}
+
+	node_id add_transform(const Filter *filter, const node_dep_desc deps[])
+	{
+		if (m_nodes.size() > node_id_max)
+			throw std::bad_alloc{};
+
+		check_deps(filter->descriptor().num_deps, deps);
+		m_nodes.push_back({ filter, deps });
+		return static_cast<node_id>(m_nodes.size() - 1);
+	}
+
+	node_id add_sink(unsigned num_planes, const node_dep_desc deps[])
+	{
+		if (m_nodes.size() > node_id_max)
+			throw std::bad_alloc{};
+		if (m_sink_id >= 0)
+			throw std::invalid_argument{ "sink already set" };
+
+		check_deps(num_planes, deps);
+		m_nodes.push_back(NodeEntry{ nullptr });
+		m_sink_id = static_cast<node_id>(m_nodes.size() - 1);
+
+		std::fill(m_sink_deps.begin(), m_sink_deps.end(), null_dep);
+		std::copy_n(deps, num_planes, m_sink_deps.begin());
+		return m_sink_id;
+	}
+
+	SinkMapping connect(Graph *graph, size_t num_sources, const SourceMapping mapping[]) const
+	{
+		std::vector<node_id> node_mapping(m_nodes.size(), null_node);
+
+		auto resolve = [&](node_dep_desc dep) -> node_dep_desc
+		{
+			if (dep.first == m_sink_id)
+				throw std::invalid_argument{ "invalid dependency on sink" };
+
+			if (is_source(dep.first)) {
+				auto it = std::find_if(mapping, mapping + num_sources, [&](const SourceMapping &source) { return source.first == dep.first; });
+				if (it == mapping + num_sources)
+					throw std::invalid_argument{ "endpoint not defined" };
+				return it->second;
+			} else {
+				assert(dep.first >= 0);
+				assert(static_cast<size_t>(dep.first) < node_mapping.size());
+				assert(node_mapping[dep.first] >= 0);
+				return{ node_mapping[dep.first], dep.second };
+			}
+		};
+
+		for (node_id id = 0; id < static_cast<node_id>(m_nodes.size()); ++id) {
+			const NodeEntry &entry = m_nodes[id];
+			if (!entry.filter)
+				continue;
+
+			node_dep_desc resolved_deps[FILTER_MAX_DEPS];
+			unsigned num_deps = entry.filter->descriptor().num_deps;
+
+			for (unsigned p = 0; p < num_deps; ++p) {
+				resolved_deps[p] = resolve(entry.deps[p]);
+			}
+
+			node_id resolved_id = graph->add_transform(entry.filter, resolved_deps);
+			node_mapping[id] = resolved_id;
+		}
+
+		SinkMapping result{};
+		std::fill(result.begin(), result.end(), null_dep);
+
+		for (unsigned p = 0; p < NODE_MAX_PLANES; ++p) {
+			if (m_sink_deps[p].first < 0)
+				break;
+			result[p] = resolve(m_sink_deps[p]);
+		}
+		return result;
+	}
+};
+
+
+SubGraphImpl::SubGraphImpl() : m_impl(std::make_unique<impl>()) {}
+SubGraphImpl::SubGraphImpl(SubGraphImpl &&other) noexcept = default;
+SubGraphImpl::~SubGraphImpl() = default;
+SubGraphImpl &SubGraphImpl::operator=(SubGraphImpl &&other) noexcept = default;
+
+node_id SubGraphImpl::add_source()
+{
+	return m_impl->add_source();
+}
+
+node_id SubGraphImpl::add_transform(const Filter *filter, const node_dep_desc deps[])
+{
+	return m_impl->add_transform(filter, deps);
+}
+
+node_id SubGraphImpl::add_sink(unsigned num_planes, const node_dep_desc deps[])
+{
+	return m_impl->add_sink(num_planes, deps);
+}
+
+SubGraph::SinkMapping SubGraphImpl::connect(Graph *graph, size_t num_sources, const SourceMapping mapping[]) const
+{
+	return m_impl->connect(graph, num_sources, mapping);
 }
 
 } // namespace graphengine

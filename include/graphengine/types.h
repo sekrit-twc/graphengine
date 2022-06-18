@@ -3,6 +3,7 @@
 #ifndef GRAPHENGINE_TYPES_H_
 #define GRAPHENGINE_TYPES_H_
 
+#include <cstddef>
 #include <utility>
 
 namespace graphengine {
@@ -20,6 +21,7 @@ typedef std::pair<node_id, unsigned> node_dep_desc;
 
 constexpr node_id null_node = -1;
 constexpr node_id node_id_max = 1023;
+constexpr node_dep_desc null_dep{ null_node, 0 };
 
 
 struct PlaneDescriptor {
