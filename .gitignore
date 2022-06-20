@@ -1,4 +1,5 @@
 # Output files.
+*.o
 *.bin
 *.bmp
 *.yuv
