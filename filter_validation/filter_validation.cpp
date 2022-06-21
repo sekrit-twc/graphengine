@@ -362,7 +362,7 @@ bool find_noteq(const void *ptr, size_t n, unsigned bytes_per_sample, uint32_t v
 		return find_noteq_T(static_cast<const uint16_t *>(ptr), n, static_cast<uint16_t>(val));
 	else if (bytes_per_sample == 4)
 		return find_noteq_T(static_cast<const uint32_t *>(ptr), n, static_cast<uint32_t>(val));
-	
+
 	return true;
 }
 
@@ -673,10 +673,11 @@ class FilterValidation::impl {
 		}
 
 		EXPECT_LE(desc.alignment_mask, 63U);
-		EXPECT_EQ(0, desc.alignment_mask & (desc.alignment_mask + 1)) << desc.alignment_mask;
+		EXPECT_EQ(0U, desc.alignment_mask & (desc.alignment_mask + 1)) << desc.alignment_mask;
 
-		if (desc.flags.entire_col)
+		if (desc.flags.entire_col) {
 			EXPECT_GE(desc.step, desc.format.height);
+		}
 
 		return !testing::Test::HasFailure();
 	}
@@ -785,10 +786,10 @@ class FilterValidation::impl {
 	} CATCH
 
 	bool test_tiled() TRY
-	{ 
+	{
 		SCOPED_TRACE("test_tiled");
 		assert(m_cached_image);
-		
+
 		const FilterDescriptor &desc = m_filter->descriptor();
 
 		// Process an inner rectangle.
@@ -965,7 +966,6 @@ class FilterValidation::impl {
 
 			input.mutable_buffer_desc()[q] = output.buffer_desc()[p];
 		}
-		input.random_fill();
 
 		// Process an inner rectangle.
 		unsigned top = (desc.flags.entire_col || desc.flags.stateful) ? 0 : desc.format.height / 4;
@@ -988,15 +988,21 @@ class FilterValidation::impl {
 		EXPECT_EQ(col_range.second, right) << "in-place requires 1:1 mapping of pixels";
 		throw_if_failed();
 
-		process_tile(input, output, context.data(), scratchpad.data(), 0, desc.format.height, 0, desc.format.width, desc.step,
-			[](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
+		process_tile(input, output, context.data(), scratchpad.data(), top, bottom, left, right, desc.step,
+			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
 			{
 				EXPECT_EQ(dep_range.first, i) << "in-place requires 1:1 mapping of pixels";
 				EXPECT_EQ(dep_range.second, i_next) << "in-place requires 1:1 mapping of pixels";
+
+				for (unsigned p = 0; p < desc.num_deps; ++p) {
+					random_fill_tile(input.buffer_desc()[p], m_dep_pixel_format[p], m_dep_format[p].bytes_per_sample,
+						dep_range.first, dep_range.second, col_range.first, col_range.second, Image::base_seed(p));
+				}
 			},
 			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
-			{				unsigned where_i, where_j;
+			{
 				for (unsigned p = 0; p < desc.num_planes; ++p) {
+					unsigned where_i, where_j;
 					EXPECT_TRUE(compare_tile(m_cached_image->buffer_desc()[p], output.buffer_desc()[p], desc.format.bytes_per_sample,
 						m_filter_pixel_format[p].floating_point, i, i_next, left, right, where_i, where_j))
 						<< "mismatch at (" << where_i << ", " << where_j << "): " << output.pixel_val(p, where_i, where_j)
