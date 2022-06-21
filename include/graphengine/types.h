@@ -38,7 +38,7 @@ struct BufferDescriptor {
 	template <class T = void>
 	T *get_line(unsigned i) const
 	{
-		return reinterpret_cast<T *>(static_cast<uint8_t *>(ptr) + static_cast<ptrdiff_t>(i & mask) * stride);
+		return reinterpret_cast<T *>(static_cast<unsigned char *>(ptr) + static_cast<ptrdiff_t>(i & mask) * stride);
 	}
 };
 
