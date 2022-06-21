@@ -30,7 +30,7 @@ extern "C" {
   static void aligned_free(void *ptr) { _aligned_free(ptr); }
 #else
   #include <stdlib.h>
-  static void aligned_malloc(size_t size, size_t alignment) { void *p; if (posix_memalign(&p, alignment, size)) return nullptr; else return p; }
+  static void *aligned_malloc(size_t size, size_t alignment) { void *p; if (posix_memalign(&p, alignment, size)) return nullptr; else return p; }
   static void aligned_free(void *ptr) { free(ptr); }
 #endif
 
