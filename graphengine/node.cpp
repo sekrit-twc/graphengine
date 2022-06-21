@@ -463,25 +463,15 @@ public:
 		BufferDescriptor outputs[FILTER_MAX_PLANES];
 
 		switch (m_filter_desc->num_deps) {
-		case 3:
-			inputs[2] = state->buffer(m_parents[2].first->cache_location(m_parents[2].second));
-		case 2:
-			inputs[1] = state->buffer(m_parents[1].first->cache_location(m_parents[1].second));
-		case 1:
-			inputs[0] = state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
-		default:
-			break;
+		case 3: inputs[2] = state->buffer(m_parents[2].first->cache_location(m_parents[2].second)); // fallthrough
+		case 2: inputs[1] = state->buffer(m_parents[1].first->cache_location(m_parents[1].second)); // fallthrough
+		case 1: inputs[0] = state->buffer(m_parents[0].first->cache_location(m_parents[0].second)); // fallthrough
 		}
 
 		switch (m_filter_desc->num_planes) {
-		case 3:
-			outputs[2] = state->buffer(cache_location(2));
-		case 2:
-			outputs[1] = state->buffer(cache_location(1));
-		case 1:
-			outputs[0] = state->buffer(cache_location(0));
-		default:
-			break;
+		case 3: outputs[2] = state->buffer(cache_location(2)); // fallthrough
+		case 2: outputs[1] = state->buffer(cache_location(1)); // fallthrough
+		case 1: outputs[0] = state->buffer(cache_location(0)); // fallthrough
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
@@ -533,14 +523,9 @@ public:
 		BufferDescriptor outputs[FILTER_MAX_PLANES];
 
 		switch (m_filter_desc->num_planes) {
-		case 3:
-			outputs[2] = state->buffer(cache_location(2));
-		case 2:
-			outputs[1] = state->buffer(cache_location(1));
-		case 1:
-			outputs[0] = state->buffer(cache_location(0));
-		default:
-			break;
+		case 3: outputs[2] = state->buffer(cache_location(2)); // fallthrough
+		case 2: outputs[1] = state->buffer(cache_location(1)); // fallthrough
+		case 1: outputs[0] = state->buffer(cache_location(0)); // fallthrough
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
@@ -577,14 +562,9 @@ public:
 		BufferDescriptor *output = &state->buffer(cache_location(0));
 
 		switch (m_filter_desc->num_deps) {
-		case 3:
-			inputs[2] = state->buffer(m_parents[2].first->cache_location(m_parents[2].second));
-		case 2:
-			inputs[1] = state->buffer(m_parents[1].first->cache_location(m_parents[1].second));
-		case 1:
-			inputs[0] = state->buffer(m_parents[0].first->cache_location(m_parents[0].second));
-		default:
-			break;
+		case 3: inputs[2] = state->buffer(m_parents[2].first->cache_location(m_parents[2].second)); // fallthrough
+		case 2: inputs[1] = state->buffer(m_parents[1].first->cache_location(m_parents[1].second)); // fallthrough
+		case 1: inputs[0] = state->buffer(m_parents[0].first->cache_location(m_parents[0].second)); // fallthrough
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
