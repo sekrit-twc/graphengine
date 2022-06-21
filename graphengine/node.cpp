@@ -593,11 +593,17 @@ public:
 			// Invoke parents.
 			switch (m_filter_desc->num_deps) {
 			case 3:
-				m_parents[2].first->process(state, parent_range.second, m_parents[2].second);
-			case 2:
+				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
 				m_parents[1].first->process(state, parent_range.second, m_parents[1].second);
+				m_parents[2].first->process(state, parent_range.second, m_parents[2].second);
+				break;
+			case 2:
+				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+				m_parents[1].first->process(state, parent_range.second, m_parents[1].second);
+				break;
 			case 1:
 				m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
+				break;
 			default:
 				break;
 			}
