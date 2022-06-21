@@ -10,3 +10,7 @@
 _msvc/.vs
 Debug
 Release
+
+# autotools files.
+.deps/
+.dirstamp
