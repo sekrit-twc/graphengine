@@ -574,8 +574,8 @@ public:
 class FilterValidation::impl {
 	struct stop_test {};
 
-	const graphengine::Filter *m_filter;
-	const graphengine::Filter *m_ref_filter;
+	const Filter *m_filter;
+	const Filter *m_ref_filter;
 	std::array<PlaneDescriptor, FILTER_MAX_DEPS> m_dep_format;
 	std::array<PixelDescriptor, FILTER_MAX_DEPS> m_dep_pixel_format;
 	std::array<PixelDescriptor, FILTER_MAX_PLANES> m_filter_pixel_format;
@@ -601,7 +601,7 @@ class FilterValidation::impl {
 			SCOPED_TRACE(i);
 			unsigned cur_tile_bottom = std::min(i + desc.step, desc.format.height);
 
-			std::pair<unsigned, unsigned> row_range = m_filter->get_row_deps(i);
+			Filter::pair_unsigned row_range = m_filter->get_row_deps(i);
 			prologue(i, cur_tile_bottom, row_range);
 			throw_if_failed();
 
@@ -687,12 +687,12 @@ class FilterValidation::impl {
 		SCOPED_TRACE("test_row_deps");
 
 		unsigned height = m_filter->descriptor().format.height;
-		std::pair<unsigned, unsigned> prev{};
+		Filter::pair_unsigned prev{};
 
 		for (unsigned i = 0; i < height; ++i) {
 			SCOPED_TRACE(i);
 
-			std::pair<unsigned, unsigned> cur = m_filter->get_row_deps(i);
+			Filter::pair_unsigned cur = m_filter->get_row_deps(i);
 			EXPECT_LE(cur.first, cur.second) << i;
 			EXPECT_GE(cur.first, prev.first) << i;
 			EXPECT_GE(cur.second, prev.second) << i;
@@ -720,8 +720,8 @@ class FilterValidation::impl {
 		m_filter->init_context(context.data());
 
 		process_tile(input, output, context.data(), scratchpad.data(), 0, desc.format.height, 0, desc.format.width, desc.step,
-			[](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range) {},
-			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
+			[](unsigned i, unsigned i_next, Filter::pair_unsigned dep_range) {},
+			[&](unsigned i, unsigned i_next, Filter::pair_unsigned dep_range)
 			{
 				for (unsigned p = 0; p < desc.num_planes; ++p) {
 					SCOPED_TRACE(p);
@@ -819,7 +819,7 @@ class FilterValidation::impl {
 
 		if (!desc.flags.entire_col) {
 			for (unsigned i = top; i < bottom; i += step) {
-				std::pair<unsigned, unsigned> range = m_filter->get_row_deps(i);
+				Filter::pair_unsigned range = m_filter->get_row_deps(i);
 				input_buffering = std::max(input_buffering, range.second - range.first);
 			}
 			input_buffering = (1U << ceil_log2(input_buffering)) - 1;
@@ -861,10 +861,10 @@ class FilterValidation::impl {
 		AlignedVector<uint8_t> scratchpad(desc.scratchpad_size);
 
 		m_filter->init_context(context.data());
-		std::pair<unsigned, unsigned> col_range = m_filter->get_col_deps(left, right);
+		Filter::pair_unsigned col_range = m_filter->get_col_deps(left, right);
 
 		process_tile(input, output, context.data(), scratchpad.data(), top, bottom, left, right, step,
-			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
+			[&](unsigned i, unsigned i_next, Filter::pair_unsigned dep_range)
 			{
 				input.default_fill();
 				output.default_fill();
@@ -875,7 +875,7 @@ class FilterValidation::impl {
 				}
 
 			},
-			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
+			[&](unsigned i, unsigned i_next, Filter::pair_unsigned dep_range)
 			{
 				for (unsigned p = 0; p < desc.num_planes; ++p) {
 					unsigned where_i, where_j;
@@ -983,13 +983,13 @@ class FilterValidation::impl {
 		AlignedVector<uint8_t> scratchpad(desc.scratchpad_size);
 
 		m_filter->init_context(context.data());
-		std::pair<unsigned, unsigned> col_range = m_filter->get_col_deps(left, right);
+		Filter::pair_unsigned col_range = m_filter->get_col_deps(left, right);
 		EXPECT_EQ(col_range.first, left) << "in-place requires 1:1 mapping of pixels";
 		EXPECT_EQ(col_range.second, right) << "in-place requires 1:1 mapping of pixels";
 		throw_if_failed();
 
 		process_tile(input, output, context.data(), scratchpad.data(), top, bottom, left, right, desc.step,
-			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
+			[&](unsigned i, unsigned i_next, Filter::pair_unsigned dep_range)
 			{
 				EXPECT_EQ(dep_range.first, i) << "in-place requires 1:1 mapping of pixels";
 				EXPECT_EQ(dep_range.second, i_next) << "in-place requires 1:1 mapping of pixels";
@@ -999,7 +999,7 @@ class FilterValidation::impl {
 						dep_range.first, dep_range.second, col_range.first, col_range.second, Image::base_seed(p));
 				}
 			},
-			[&](unsigned i, unsigned i_next, std::pair<unsigned, unsigned> dep_range)
+			[&](unsigned i, unsigned i_next, Filter::pair_unsigned dep_range)
 			{
 				for (unsigned p = 0; p < desc.num_planes; ++p) {
 					unsigned where_i, where_j;
@@ -1017,11 +1017,11 @@ class FilterValidation::impl {
 #undef CATCH
 #undef TRY
 public:
-	impl(const graphengine::Filter *filter, const graphengine::PlaneDescriptor &dep_format) :
+	impl(const Filter *filter, const PlaneDescriptor &dep_format) :
 		impl(filter, std::vector<PlaneDescriptor>(FILTER_MAX_DEPS, dep_format).data())
 	{}
 
-	impl(const graphengine::Filter *filter, const graphengine::PlaneDescriptor dep_format[FILTER_MAX_DEPS]) :
+	impl(const Filter *filter, const PlaneDescriptor dep_format[FILTER_MAX_DEPS]) :
 		m_filter{ filter },
 		m_ref_filter{},
 		m_dep_format{},
@@ -1136,14 +1136,16 @@ FilterValidation::FilterValidation(const Filter *filter) :
 {}
 
 FilterValidation::FilterValidation(const Filter *filter, const PlaneDescriptor &dep_format) :
-	m_impl(std::make_unique<impl>(filter, dep_format))
+	m_impl(new impl(filter, dep_format))
 {}
 
-FilterValidation::FilterValidation(const Filter *filter, const PlaneDescriptor dep_format[3]) :
-	m_impl(std::make_unique<impl>(filter, dep_format))
+FilterValidation::FilterValidation(const Filter *filter, const PlaneDescriptor dep_format[FILTER_MAX_DEPS]) :
+	m_impl(new impl(filter, dep_format))
 {}
 
+FilterValidation::FilterValidation(FilterValidation &&other) noexcept = default;
 FilterValidation::~FilterValidation() = default;
+FilterValidation &FilterValidation::operator=(FilterValidation &&other) noexcept = default;
 
 FilterValidation &FilterValidation::set_reference_filter(const Filter *ref_filter)
 {

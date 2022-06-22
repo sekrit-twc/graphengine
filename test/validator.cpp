@@ -30,9 +30,9 @@ public:
 		desc.flags.in_place = true;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
+	pair_unsigned get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept override { return { left, right }; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept override { return { left, right }; }
 };
 
 
@@ -43,9 +43,9 @@ public:
 		desc.step = step;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept { return{}; }
+	pair_unsigned get_row_deps(unsigned i) const noexcept { return{}; }
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept { return {}; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept { return {}; }
 };
 
 
@@ -70,9 +70,9 @@ public:
 		desc.step = 1;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept { return{ 0, 0 }; }
+	pair_unsigned get_row_deps(unsigned i) const noexcept { return{ 0, 0 }; }
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept { return { 0, 0 }; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept { return { 0, 0 }; }
 };
 
 
@@ -114,12 +114,12 @@ public:
 		desc.step = 1;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept
+	pair_unsigned get_row_deps(unsigned i) const noexcept
 	{
 		return{ std::max(i, m_support) - m_support, std::min(i + 1 + m_support, desc.format.height) };
 	}
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept
 	{
 		return{ std::max(left, m_support) - m_support, std::min(right + m_support, desc.format.width) };
 	}
@@ -183,7 +183,7 @@ public:
 		desc.step = 1;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept
+	pair_unsigned get_row_deps(unsigned i) const noexcept
 	{
 		double ratio = static_cast<double>(m_src_height) / desc.format.height;
 		double coord = i * ratio;
@@ -193,7 +193,7 @@ public:
 		return{ top, bot };
 	}
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept { return{ left, right }; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept { return{ left, right }; }
 };
 
 
@@ -222,13 +222,13 @@ public:
 		desc.step = 4;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept
+	pair_unsigned get_row_deps(unsigned i) const noexcept
 	{
 		unsigned i_mod4 = i & ~3U;
 		return{ i_mod4, std::min(i_mod4 + 4, desc.format.height) };
 	}
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept
 	{
 		double ratio = static_cast<double>(m_src_width) / desc.format.width;
 		double coord_left = left * ratio;
@@ -265,9 +265,9 @@ public:
 		desc.flags.entire_row = 1;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept { return{ i, i + 1 }; }
+	pair_unsigned get_row_deps(unsigned i) const noexcept { return{ i, i + 1 }; }
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept { return{ 0, m_src_width }; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept { return{ 0, m_src_width }; }
 };
 
 
@@ -299,9 +299,9 @@ public:
 		desc.flags.entire_col = 1;
 	}
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept { return{ 0, m_src_format.height }; }
+	pair_unsigned get_row_deps(unsigned i) const noexcept { return{ 0, m_src_format.height }; }
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept { return { 0, m_src_format.width }; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept { return { 0, m_src_format.width }; }
 };
 
 } // namespace
@@ -440,8 +440,8 @@ void ValidationFilter::process(const graphengine::BufferDescriptor in[], const g
 	}
 
 	// Check presence of dependencies.
-	std::pair<unsigned, unsigned> row_deps = get_row_deps(i);
-	std::pair<unsigned, unsigned> col_deps = get_col_deps(left, right);
+	pair_unsigned row_deps = get_row_deps(i);
+	pair_unsigned col_deps = get_col_deps(left, right);
 	for (unsigned p = 0; p < desc.num_deps; ++p) {
 		const auto &parent = state->m_filter_parents[this][p];
 
@@ -525,7 +525,7 @@ class GraphValidator::Script {
 
 		for (const auto &parent : statement.parents) {
 			const auto &var = m_vars.at(parent.name);
-			deps.emplace_back(var.id, parent.plane);
+			deps.push_back({ var.id, parent.plane });
 			desc.push_back(var.planes[parent.plane]);
 		}
 
@@ -544,7 +544,7 @@ class GraphValidator::Script {
 
 		for (const auto &parent : statement.parents) {
 			const auto &var = m_vars.at(parent.name);
-			deps.emplace_back(var.id, parent.plane);
+			deps.push_back({ var.id, parent.plane });
 
 			if (!parent_desc.width)
 				parent_desc = var.planes[parent.plane];
@@ -561,7 +561,7 @@ class GraphValidator::Script {
 
 		m_filter_table[id] = filter.get();
 		for (const auto &dep : deps) {
-			m_filter_parents[filter.get()].emplace_back(m_filter_table.at(dep.first), dep.second);
+			m_filter_parents[filter.get()].push_back({ m_filter_table.at(dep.id), dep.plane });
 		}
 		m_filters->push_back(std::move(filter));
 	}

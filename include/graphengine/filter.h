@@ -4,7 +4,6 @@
 #define GRAPHENGINE_FILTER_H_
 
 #include <cstddef>
-#include <utility>
 #include "graphengine/types.h"
 
 namespace graphengine {
@@ -34,6 +33,8 @@ struct FilterDescriptor {
 
 
 class Filter {
+public:
+	typedef detail::pair<unsigned, unsigned> pair_unsigned;
 protected:
 	Filter() = default;
 public:
@@ -45,9 +46,9 @@ public:
 
 	virtual const FilterDescriptor &descriptor() const noexcept = 0;
 
-	virtual std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept = 0;
+	virtual pair_unsigned get_row_deps(unsigned i) const noexcept = 0;
 
-	virtual std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept = 0;
+	virtual pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept = 0;
 
 	virtual void init_context(void *context) const noexcept = 0;
 

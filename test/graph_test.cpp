@@ -25,9 +25,9 @@ public:
 
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 
-	std::pair<unsigned, unsigned> get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
+	pair_unsigned get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
 
-	std::pair<unsigned, unsigned> get_col_deps(unsigned left, unsigned right) const noexcept override { return{ left, right }; }
+	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept override { return{ left, right }; }
 
 	void init_context(void *context) const noexcept override {}
 
@@ -105,7 +105,7 @@ TEST(GraphTest, test_add_transform)
 
 			std::vector<graphengine::node_dep_desc> deps;
 			for (unsigned n = 0; n < num_deps; ++n) {
-				deps.emplace_back(n, n % graphengine::NODE_MAX_PLANES);
+				deps.push_back({ static_cast<graphengine::node_id>(n), n % graphengine::NODE_MAX_PLANES });
 			}
 
 			graphengine::node_id id = graph.add_transform(&dummy, deps.data());
@@ -213,7 +213,7 @@ TEST(GraphTest, test_add_sink)
 
 	std::vector<graphengine::node_dep_desc> deps;
 	for (unsigned p = 0; p < graphengine::NODE_MAX_PLANES; ++p) {
-		deps.emplace_back(source_id, p);
+		deps.push_back({ source_id, p });
 	}
 
 	graphengine::node_id sink_id = graph.add_sink(static_cast<unsigned>(deps.size()), deps.data());

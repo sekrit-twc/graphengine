@@ -437,7 +437,7 @@ public:
 		if (!state->update_col_bounds(id(), left, right))
 			return;
 
-		std::pair<unsigned, unsigned> col_deps = m_filter->get_col_deps(left, right);
+		Filter::pair_unsigned col_deps = m_filter->get_col_deps(left, right);
 		for (unsigned p = 0; p < m_filter_desc->num_deps; ++p) {
 			m_parents[p].first->begin_frame(state, col_deps.first, col_deps.second, m_parents[p].second);
 		}
@@ -475,7 +475,7 @@ public:
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
-			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+			Filter::pair_unsigned parent_range = m_filter->get_row_deps(cursor);
 
 			// Invoke parents.
 			switch (m_filter_desc->num_deps) {
@@ -529,7 +529,7 @@ public:
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
-			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+			Filter::pair_unsigned parent_range = m_filter->get_row_deps(cursor);
 
 			// Invoke parent.
 			m_parents[0].first->process(state, parent_range.second, m_parents[0].second);
@@ -568,7 +568,7 @@ public:
 		}
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
-			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+			Filter::pair_unsigned parent_range = m_filter->get_row_deps(cursor);
 
 			// Invoke parents.
 			switch (m_filter_desc->num_deps) {
@@ -617,7 +617,7 @@ public:
 		BufferDescriptor *output = &state->buffer(cache_location(0));
 
 		for (; cursor < last_row; cursor += m_filter_desc->step) {
-			std::pair<unsigned, unsigned> parent_range = m_filter->get_row_deps(cursor);
+			Filter::pair_unsigned parent_range = m_filter->get_row_deps(cursor);
 
 			// Invoke parent.
 			m_parents[0].first->process(state, parent_range.second, m_parents[0].second);

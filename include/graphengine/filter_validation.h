@@ -2,6 +2,7 @@
 #define GRAPHENGINE_FILTER_VALIDATION_VALIDATE_H_
 
 #include <memory>
+#include "graphengine/types.h"
 
 namespace graphengine {
 
@@ -19,13 +20,17 @@ public:
 private:
 	class impl;
 
-	std::unique_ptr<impl> m_impl;
+	detail::unique_ptr<impl> m_impl;
 public:
 	explicit FilterValidation(const Filter *filter);
 	FilterValidation(const Filter *filter, const PlaneDescriptor &dep_format);
-	FilterValidation(const Filter *filter, const PlaneDescriptor dep_format[3]);
+	FilterValidation(const Filter *filter, const PlaneDescriptor dep_format[FILTER_MAX_DEPS]);
+
+	FilterValidation(FilterValidation &&other) noexcept;
 
 	~FilterValidation();
+
+	FilterValidation &operator=(FilterValidation &&other) noexcept;
 
 	FilterValidation &set_reference_filter(const Filter *ref_filter);
 	FilterValidation &set_reference_filter(const Filter *ref_filter, double snr_thresh);
