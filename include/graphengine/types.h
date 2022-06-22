@@ -43,6 +43,22 @@ struct BufferDescriptor {
 	}
 };
 
+struct Exception {
+	enum {
+		UNKNOWN = 0,
+		OUT_OF_MEMORY = 1,
+		USER_CALLBACK = 2,
+		ILLEGAL_STATE = 3,
+		INVALID_DESCRIPTOR = 4,
+		INVALID_DIMENSIONS = 5,
+		INVALID_NODE = 6,
+		LIMIT_EXCEEDED = 7,
+	};
+
+	int code;
+	const char *msg;
+};
+
 
 // STL replacement types.
 namespace detail {

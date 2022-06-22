@@ -81,7 +81,7 @@ TEST(GraphTest, test_add_source_invalid_desc)
 {
 	for (const auto &format : invalid_node_formats()) {
 		graphengine::GraphImpl graph;
-		EXPECT_ANY_THROW(graph.add_source(format.first, format.second.data()));
+		EXPECT_THROW(graph.add_source(format.first, format.second.data()), graphengine::Exception);
 	}
 }
 
@@ -124,7 +124,7 @@ TEST(GraphTest, test_add_transform_zero_planes)
 	dummy.mutable_descriptor().num_planes = 0;
 
 	std::vector<graphengine::node_dep_desc> deps(graphengine::FILTER_MAX_DEPS + 1, { source_id, 0 });
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, deps.data()));
+	EXPECT_THROW(graph.add_transform(&dummy, deps.data()), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_transform_excess_deps)
@@ -137,7 +137,7 @@ TEST(GraphTest, test_add_transform_excess_deps)
 	dummy.mutable_descriptor().num_deps = graphengine::FILTER_MAX_DEPS + 1;
 
 	std::vector<graphengine::node_dep_desc> deps(graphengine::FILTER_MAX_DEPS + 1, { source_id, 0 });
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, deps.data()));
+	EXPECT_THROW(graph.add_transform(&dummy, deps.data()), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_transform_excess_planes)
@@ -150,7 +150,7 @@ TEST(GraphTest, test_add_transform_excess_planes)
 	dummy.mutable_descriptor().num_planes = graphengine::FILTER_MAX_PLANES + 1;
 
 	graphengine::node_dep_desc dep = { source_id, 0 };
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, &dep));
+	EXPECT_THROW(graph.add_transform(&dummy, &dep), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_transform_invalid_desc)
@@ -166,7 +166,7 @@ TEST(GraphTest, test_add_transform_invalid_desc)
 		DummyFilter dummy{ format.second.front().width, format.second.front().height };
 		dummy.mutable_descriptor().format.bytes_per_sample = format.second.front().bytes_per_sample;
 		graphengine::node_dep_desc dep = { source_id, 0 };
-		EXPECT_ANY_THROW(graph.add_transform(&dummy, &dep));
+		EXPECT_THROW(graph.add_transform(&dummy, &dep), graphengine::Exception);
 	}
 }
 
@@ -180,13 +180,13 @@ TEST(GraphTest, test_add_transform_bad_dep)
 	graphengine::node_dep_desc dep;
 
 	dep = { graphengine::null_node, 0 };
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, &dep)) << "{null, 0}";
+	EXPECT_THROW(graph.add_transform(&dummy, &dep), graphengine::Exception) << "{null, 0}";
 
 	dep = { source_id + 1, 0 };
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, &dep)) << "{1, 0}";
+	EXPECT_THROW(graph.add_transform(&dummy, &dep), graphengine::Exception) << "{1, 0}";
 
 	dep = { source_id, 1 };
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, &dep)) << "{0, 1}";
+	EXPECT_THROW(graph.add_transform(&dummy, &dep), graphengine::Exception) << "{0, 1}";
 }
 
 TEST(GraphTest, test_add_transform_dim_mismatch)
@@ -202,7 +202,7 @@ TEST(GraphTest, test_add_transform_dim_mismatch)
 	dummy.mutable_descriptor().num_deps = 2;
 
 	graphengine::node_dep_desc deps[] = { { source_id, 0 }, { source2_id, 0 } };
-	EXPECT_ANY_THROW(graph.add_transform(&dummy, deps));
+	EXPECT_THROW(graph.add_transform(&dummy, deps), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_sink)
@@ -258,7 +258,7 @@ TEST(GraphTest, test_add_sink_zero_planes)
 	graphengine::PlaneDescriptor desc{ 640, 480, 1 };
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 
-	EXPECT_ANY_THROW(graph.add_sink(0, nullptr));
+	EXPECT_THROW(graph.add_sink(0, nullptr), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_sink_excess_planes)
@@ -268,7 +268,7 @@ TEST(GraphTest, test_add_sink_excess_planes)
 	graphengine::node_id source_id = graph.add_source(1, &desc);
 	std::vector<graphengine::node_dep_desc> deps(graphengine::NODE_MAX_PLANES + 1, { source_id, 0 });
 
-	EXPECT_ANY_THROW(graph.add_sink(static_cast<unsigned>(deps.size()), deps.data()));
+	EXPECT_THROW(graph.add_sink(static_cast<unsigned>(deps.size()), deps.data()), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_sink_bad_subsampling)
@@ -282,7 +282,7 @@ TEST(GraphTest, test_add_sink_bad_subsampling)
 	graphengine::node_id source2 = graph.add_source(1, &desc2);
 
 	graphengine::node_dep_desc deps[] = { { source0, 0 }, { source1, 0 }, { source2, 0 } };
-	EXPECT_ANY_THROW(graph.add_sink(3, deps));
+	EXPECT_THROW(graph.add_sink(3, deps), graphengine::Exception);
 }
 
 TEST(GraphTest, test_add_sink_bad_dep)
@@ -294,13 +294,13 @@ TEST(GraphTest, test_add_sink_bad_dep)
 	graphengine::node_dep_desc dep;
 
 	dep = { graphengine::null_node, 0 };
-	EXPECT_ANY_THROW(graph.add_sink(1, &dep)) << "{null, 0}";
+	EXPECT_THROW(graph.add_sink(1, &dep), graphengine::Exception) << "{null, 0}";
 
 	dep = { source_id + 1, 0 };
-	EXPECT_ANY_THROW(graph.add_sink(1, &dep)) << "{1, 0}";
+	EXPECT_THROW(graph.add_sink(1, &dep), graphengine::Exception) << "{1, 0}";
 
 	dep = { source_id, 1 };
-	EXPECT_ANY_THROW(graph.add_sink(1, &dep)) << "{0, 1}";
+	EXPECT_THROW(graph.add_sink(1, &dep), graphengine::Exception) << "{0, 1}";
 }
 
 TEST(GraphTest, test_add_sink_twice)
@@ -311,7 +311,7 @@ TEST(GraphTest, test_add_sink_twice)
 	graphengine::node_dep_desc dep = { source_id, 0 };
 
 	ASSERT_GE(graph.add_sink(1, &dep), 0);
-	EXPECT_ANY_THROW(graph.add_sink(1, &dep));
+	EXPECT_THROW(graph.add_sink(1, &dep), graphengine::Exception);
 }
 
 } // namespace

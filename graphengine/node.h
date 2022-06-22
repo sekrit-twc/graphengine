@@ -14,8 +14,6 @@ class FrameState;
 
 class Filter;
 
-struct CallbackError {};
-
 class Node {
 	node_id m_id;
 	ptrdiff_t m_cache_location[NODE_MAX_PLANES];

@@ -2,7 +2,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <stdexcept>
 #include "graphengine/filter.h"
 #include "node.h"
 #include "state.h"
@@ -14,7 +13,7 @@ namespace {
 void invoke_callback(const Graph::Callback &cb, unsigned i, unsigned left, unsigned right)
 {
 	if (cb.func(cb.user, i, left, right))
-		throw CallbackError{};
+		throw Exception{ Exception::USER_CALLBACK, "user callback failed" };
 }
 
 unsigned calculate_subsampling_ratios(unsigned num_planes, const PlaneDescriptor desc[], unsigned subsample_w[], unsigned subsample_h[])
@@ -32,9 +31,9 @@ unsigned calculate_subsampling_ratios(unsigned num_planes, const PlaneDescriptor
 		double ratio_h = height / desc[p].height;
 
 		if (ratio_w != 1.0 && ratio_w != 2.0 && ratio_w != 4.0)
-			throw std::runtime_error{ "only 1, 2, and 4x subsampling supported" };
+			throw Exception{ Exception::INVALID_DIMENSIONS, "only 1, 2, and 4x subsampling supported" };
 		if (ratio_h != 1.0 && ratio_h != 2.0 && ratio_h != 4.0)
-			throw std::runtime_error{ "only 1, 2, and 4x subsampling supported" };
+			throw Exception{ Exception::INVALID_DIMENSIONS, "only 1, 2, and 4x subsampling supported" };
 
 		subsample_w[p] = std::lrint(std::log2(ratio_w));
 		subsample_h[p] = std::lrint(std::log2(ratio_h));

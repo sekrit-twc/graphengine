@@ -5,10 +5,10 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <memory>
 #include <new>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -17,6 +17,12 @@
 #include "cpuinfo.h"
 #include "node.h"
 #include "state.h"
+
+#define TRY try
+#define CATCH \
+  catch (const std::bad_alloc &) { throw Exception{ Exception::OUT_OF_MEMORY, "out of memory" }; } \
+  catch (const std::exception &) { throw Exception{ Exception::UNKNOWN, "unknown C++ exception" }; } \
+  catch (...) { throw Exception{ Exception::UNKNOWN, "unknown exception" }; }
 
 namespace graphengine {
 
@@ -55,21 +61,21 @@ unsigned ceil_log2(unsigned count) noexcept
 void validate_plane_desc(const PlaneDescriptor &desc)
 {
 	if (!desc.width || !desc.height)
-		throw std::invalid_argument{ "must have non-zero plane dimensions" };
+		throw Exception{ Exception::INVALID_DESCRIPTOR, "must have non-zero plane dimensions" };
 	if (desc.bytes_per_sample != 1 && desc.bytes_per_sample != 2 && desc.bytes_per_sample != 4)
-		throw std::invalid_argument{ "bytes_per_sample must be 1, 2, or 4" };
+		throw Exception{ Exception::INVALID_DESCRIPTOR, "bytes_per_sample must be 1, 2, or 4" };
 
 	constexpr unsigned max_width = static_cast<unsigned>(UINT_MAX) & ~63U;
 	if (max_width < desc.width)
-		throw std::range_error{ "frame dimensions too large" };
+		throw Exception{ Exception::INVALID_DIMENSIONS, "frame dimensions too large" };
 
 	constexpr size_t max_plane_size = static_cast<size_t>(PTRDIFF_MAX) & ~static_cast<size_t>(63);
 	if (max_plane_size / desc.bytes_per_sample < desc.width)
-		throw std::range_error{ "frame dimensions too large" };
+		throw Exception{ Exception::INVALID_DIMENSIONS, "frame dimensions too large" };
 
 	size_t rowsize = ((static_cast<size_t>(desc.bytes_per_sample) * desc.width) + 63) & ~static_cast<size_t>(63);
 	if (max_plane_size / rowsize < desc.height)
-		throw std::range_error{ "frame dimensions too large" };
+		throw Exception{ Exception::INVALID_DIMENSIONS, "frame dimensions too large" };
 }
 
 unsigned auto_tile_width(size_t cache_size_hint, unsigned width, size_t cache_footprint)
@@ -209,9 +215,9 @@ class GraphImpl::impl {
 	Node *lookup_node(node_id id) const
 	{
 		if (id < 0)
-			throw std::range_error{ "null node" };
+			throw Exception{ Exception::INVALID_NODE, "null node" };
 		if (static_cast<size_t>(id) >= m_nodes.size())
-			throw std::range_error{ "id out of range" };
+			throw Exception{ Exception::INVALID_NODE, "id out of range" };
 		return node(id);
 	}
 
@@ -224,7 +230,7 @@ class GraphImpl::impl {
 		for (unsigned i = 0; i < num_deps; ++i) {
 			Node *node = lookup_node(deps[i].id);
 			if (deps[i].plane >= node->num_planes())
-				throw std::range_error{ "plane number out of range" };
+				throw Exception{ Exception::INVALID_NODE, "plane number out of range" };
 
 			resolved_deps[i] = { node, deps[i].plane };
 		}
@@ -235,7 +241,7 @@ class GraphImpl::impl {
 	void reserve_next_node()
 	{
 		if (m_nodes.size() > node_id_max)
-			throw std::bad_alloc{};
+			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of nodes exceeded" };
 
 		m_nodes.reserve(m_nodes.size() + 1);
 	}
@@ -243,7 +249,7 @@ class GraphImpl::impl {
 	void add_node(std::unique_ptr<Node> node)
 	{
 		if (m_nodes.size() > node_id_max)
-			throw std::bad_alloc{};
+			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of nodes exceeded" };
 
 		assert(node->id() == m_nodes.size());
 		m_nodes.push_back(std::move(node));
@@ -253,11 +259,11 @@ class GraphImpl::impl {
 	{
 		const FilterDescriptor &desc = filter->descriptor();
 		if (desc.num_deps > FILTER_MAX_DEPS)
-			throw std::invalid_argument{ "maximum number of filter dependencies exceeded" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "maximum number of filter dependencies exceeded" };
 		if (!desc.num_planes)
-			throw std::invalid_argument{ "filter must have non-zero plane count" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "filter must have non-zero plane count" };
 		if (desc.num_planes > FILTER_MAX_PLANES)
-			throw std::invalid_argument{ "maximum number of filter outputs exceeded" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "maximum number of filter outputs exceeded" };
 
 		validate_plane_desc(desc.format);
 
@@ -268,7 +274,7 @@ class GraphImpl::impl {
 			const PlaneDescriptor desc = resolved_deps[p].first->format(resolved_deps[p].second);
 
 			if (luma_desc.width != desc.width || luma_desc.height != desc.height)
-				throw std::runtime_error{ "must have identical dimensions across all dependencies" };
+				throw Exception{ Exception::INVALID_DIMENSIONS, "must have identical dimensions across all dependencies" };
 		}
 
 		std::unique_ptr<Node> node = make_transform_node(next_node_id(), filter, resolved_deps.data());
@@ -557,11 +563,7 @@ class GraphImpl::impl {
 			state->reset_initialized(m_nodes.size());
 
 			node->begin_frame(state, j, j_end, plane);
-			try {
-				node->process(state, format.height, plane);
-			} catch (const CallbackError &) {
-				throw std::runtime_error{ "user callback failed" };
-			}
+			node->process(state, format.height, plane);
 
 			j = j_end;
 		}
@@ -580,7 +582,7 @@ public:
 	unsigned get_tile_width(bool with_callbacks) const
 	{
 		if (m_sink_id < 0)
-			throw std::invalid_argument{ "sink not set" };
+			throw Exception{ Exception::ILLEGAL_STATE, "sink not set" };
 
 		Node *sink = node(m_sink_id);
 
@@ -602,11 +604,11 @@ public:
 	node_id add_source(unsigned num_planes, const PlaneDescriptor desc[])
 	{
 		if (!num_planes)
-			throw std::invalid_argument{ "endpoint must have non-zero plane count" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "endpoint must have non-zero plane count" };
 		if (num_planes > NODE_MAX_PLANES)
-			throw std::invalid_argument{ "maximum number of endpoint planes exceeded" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "maximum number of endpoint planes exceeded" };
 		if (m_source_ids.size() >= GRAPH_MAX_ENDPOINTS - 1)
-			throw std::invalid_argument{ "maximum number of sources exceeded" };
+			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of sources exceeded" };
 
 		for (unsigned p = 0; p < num_planes; ++p) {
 			validate_plane_desc(desc[p]);
@@ -640,11 +642,11 @@ public:
 	node_id add_sink(unsigned num_planes, const node_dep_desc deps[])
 	{
 		if (!num_planes)
-			throw std::invalid_argument{ "endpoint must have non-zero plane count" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "endpoint must have non-zero plane count" };
 		if (num_planes > NODE_MAX_PLANES)
-			throw std::invalid_argument{ "maximum number of endpoint planes exceeded" };
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "maximum number of endpoint planes exceeded" };
 		if (m_sink_id >= 0)
-			throw std::invalid_argument{ "sink already set" };
+			throw Exception{ Exception::ILLEGAL_STATE, "sink already set"};
 
 		auto original_resolved_deps = resolve_node_deps(num_planes, deps);
 		size_t original_node_count = m_nodes.size();
@@ -713,7 +715,7 @@ public:
 	size_t get_cache_footprint(bool with_callbacks) const
 	{
 		if (m_sink_id < 0)
-			throw std::invalid_argument{ "sink not set" };
+			throw Exception{ Exception::ILLEGAL_STATE, "sink not set" };
 
 		size_t interleaved_footprint = FrameState::metadata_size(m_nodes.size()) + m_simulation_result->cache_footprint;
 		if (with_callbacks || !can_run_planar())
@@ -731,7 +733,7 @@ public:
 	size_t get_tmp_size(bool with_callbacks) const
 	{
 		if (m_sink_id < 0)
-			throw std::invalid_argument{ "sink not set" };
+			throw Exception{ Exception::ILLEGAL_STATE, "sink not set" };
 
 #ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
 		size_t guard_page_size = FrameState::guard_page_size() * FrameState::num_guard_pages(m_nodes.size());
@@ -755,7 +757,7 @@ public:
 	BufferingRequirement get_buffering_requirement() const
 	{
 		if (m_sink_id < 0)
-			throw std::invalid_argument{ "sink not set" };
+			throw Exception{ Exception::ILLEGAL_STATE, "sink not set" };
 
 		assert(m_source_ids.size() < GRAPH_MAX_ENDPOINTS);
 
@@ -784,7 +786,7 @@ public:
 	void run(const EndpointConfiguration &endpoints, void *tmp) const
 	{
 		if (m_sink_id < 0)
-			throw std::invalid_argument{ "sink not set" };
+			throw Exception{ Exception::ILLEGAL_STATE, "sink not set" };
 
 		bool planar = can_run_planar();
 		if (planar) {
@@ -810,7 +812,7 @@ public:
 
 GraphImpl *GraphImpl::from(Graph *graph) noexcept { return dynamic_cast<GraphImpl *>(graph); }
 
-GraphImpl::GraphImpl() : m_impl{ new impl{} } {}
+GraphImpl::GraphImpl() TRY : m_impl{ new impl{} } {} CATCH
 GraphImpl::GraphImpl(GraphImpl &&other) noexcept = default;
 GraphImpl::~GraphImpl() = default;
 GraphImpl &GraphImpl::operator=(GraphImpl &&other) noexcept = default;
@@ -824,45 +826,45 @@ void GraphImpl::set_tiling_enabled(bool enabled) { m_impl->set_tiling_enabled(en
 void GraphImpl::set_cache_size(size_t cache_size) { m_impl->set_cache_size(cache_size); }
 void GraphImpl::set_tile_width(unsigned tile_width) { m_impl->set_tile_width(tile_width); }
 
-unsigned GraphImpl::get_tile_width(bool with_callbacks) const
+unsigned GraphImpl::get_tile_width(bool with_callbacks) const TRY
 {
 	return m_impl->get_tile_width(with_callbacks);
-}
+} CATCH
 
-node_id GraphImpl::add_source(unsigned num_planes, const PlaneDescriptor desc[])
+node_id GraphImpl::add_source(unsigned num_planes, const PlaneDescriptor desc[]) TRY
 {
 	return m_impl->add_source(num_planes, desc);
-}
+} CATCH
 
-node_id GraphImpl::add_transform(const Filter *filter, const node_dep_desc deps[])
+node_id GraphImpl::add_transform(const Filter *filter, const node_dep_desc deps[]) TRY
 {
 	return m_impl->add_transform(filter, deps);
-}
+} CATCH
 
-node_id GraphImpl::add_sink(unsigned num_planes, const node_dep_desc deps[])
+node_id GraphImpl::add_sink(unsigned num_planes, const node_dep_desc deps[]) TRY
 {
 	return m_impl->add_sink(num_planes, deps);
-}
+} CATCH
 
-size_t GraphImpl::get_cache_footprint(bool with_callbacks) const
+size_t GraphImpl::get_cache_footprint(bool with_callbacks) const TRY
 {
 	return m_impl->get_cache_footprint(with_callbacks);
-}
+} CATCH
 
-size_t GraphImpl::get_tmp_size(bool with_callbacks) const
+size_t GraphImpl::get_tmp_size(bool with_callbacks) const TRY
 {
 	return m_impl->get_tmp_size(with_callbacks);
-}
+} CATCH
 
-Graph::BufferingRequirement GraphImpl::get_buffering_requirement() const
+Graph::BufferingRequirement GraphImpl::get_buffering_requirement() const TRY
 {
 	return m_impl->get_buffering_requirement();
-}
+} CATCH
 
-void GraphImpl::run(const EndpointConfiguration &endpoints, void *tmp) const
+void GraphImpl::run(const EndpointConfiguration &endpoints, void *tmp) const TRY
 {
 	return m_impl->run(endpoints, tmp);
-}
+} CATCH
 
 
 class SubGraphImpl::impl {
@@ -890,7 +892,7 @@ class SubGraphImpl::impl {
 	{
 		for (unsigned p = 0; p < num_deps; ++p) {
 			if (deps[p].id >= static_cast<node_id>(m_nodes.size()))
-				throw std::range_error{ "id out of range" };
+				throw Exception{ Exception::INVALID_NODE, "id out of range" };
 		}
 	}
 
@@ -907,7 +909,7 @@ public:
 	node_id add_source()
 	{
 		if (m_nodes.size() > node_id_max)
-			throw std::bad_alloc{};
+			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of nodes exceeded" };
 
 		m_source_ids.reserve(m_source_ids.size() + 1);
 		m_nodes.reserve(m_nodes.size() + 1);
@@ -920,7 +922,7 @@ public:
 	node_id add_transform(const Filter *filter, const node_dep_desc deps[])
 	{
 		if (m_nodes.size() > node_id_max)
-			throw std::bad_alloc{};
+			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of nodes exceeded" };
 
 		check_deps(filter->descriptor().num_deps, deps);
 		m_nodes.push_back({ filter, deps });
@@ -930,7 +932,7 @@ public:
 	node_id add_sink(const node_dep_desc &dep)
 	{
 		if (m_nodes.size() > node_id_max)
-			throw std::bad_alloc{};
+			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of nodes exceeded" };
 
 		check_deps(1, &dep);
 
@@ -951,10 +953,10 @@ public:
 			if (is_source(dep.id)) {
 				auto it = std::find_if(sources, sources + num_sources, [&](const Mapping &s) { return s.internal_id == dep.id; });
 				if (it == sources + num_sources)
-					throw std::invalid_argument{ "endpoint not defined" };
+					throw Exception{ Exception::INVALID_NODE, "endpoint not defined" };
 				return it->external_dep;
 			} else if (is_sink(dep.id)) {
-				throw std::invalid_argument{ "invalid dependency on sink" };
+				throw Exception{ Exception::INVALID_NODE, "invalid dependency on sink" };
 			} else {
 				assert(dep.id >= 0);
 				assert(static_cast<size_t>(dep.id) < node_mapping.size());
@@ -987,29 +989,29 @@ public:
 };
 
 
-SubGraphImpl::SubGraphImpl() : m_impl{ new impl{} } {}
+SubGraphImpl::SubGraphImpl() TRY : m_impl{ new impl{} } {} CATCH
 SubGraphImpl::SubGraphImpl(SubGraphImpl &&other) noexcept = default;
 SubGraphImpl::~SubGraphImpl() = default;
 SubGraphImpl &SubGraphImpl::operator=(SubGraphImpl &&other) noexcept = default;
 
-node_id SubGraphImpl::add_source()
+node_id SubGraphImpl::add_source() TRY
 {
 	return m_impl->add_source();
-}
+} CATCH
 
-node_id SubGraphImpl::add_sink(const node_dep_desc &dep)
+node_id SubGraphImpl::add_sink(const node_dep_desc &dep) TRY
 {
 	return m_impl->add_sink(dep);
-}
+} CATCH
 
-node_id SubGraphImpl::add_transform(const Filter *filter, const node_dep_desc deps[])
+node_id SubGraphImpl::add_transform(const Filter *filter, const node_dep_desc deps[]) TRY
 {
 	return m_impl->add_transform(filter, deps);
-}
+} CATCH
 
-void SubGraphImpl::connect(Graph *graph, size_t num_sources, const Mapping sources[], Mapping sinks[]) const
+void SubGraphImpl::connect(Graph *graph, size_t num_sources, const Mapping sources[], Mapping sinks[]) const TRY
 {
 	return m_impl->connect(graph, num_sources, sources, sinks);
-}
+} CATCH
 
 } // namespace graphengine
