@@ -11,6 +11,12 @@ namespace graphengine {
 
 namespace {
 
+void invoke_callback(const Graph::Callback &cb, unsigned i, unsigned left, unsigned right)
+{
+	if (cb.func(cb.user, i, left, right))
+		throw CallbackError{};
+}
+
 unsigned calculate_subsampling_ratios(unsigned num_planes, const PlaneDescriptor desc[], unsigned subsample_w[], unsigned subsample_h[])
 {
 	unsigned step = 1;
@@ -112,7 +118,7 @@ public:
 		std::pair<unsigned, unsigned> cols = state->col_bounds(id());
 
 		for (; cursor < last_row; cursor += m_step) {
-			callback(cursor, cols.first, cols.second);
+			invoke_callback(callback, cursor, cols.first, cols.second);
 			state->check_guard_pages();
 		}
 
@@ -260,7 +266,7 @@ public:
 			}
 
 			if (callback) {
-				callback(cursor, callback_bounds.first, callback_bounds.second);
+				invoke_callback(callback, cursor, callback_bounds.first, callback_bounds.second);
 				state->check_guard_pages();
 			}
 		}

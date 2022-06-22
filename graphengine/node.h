@@ -14,6 +14,7 @@ class FrameState;
 
 class Filter;
 
+struct CallbackError {};
 
 class Node {
 	node_id m_id;

@@ -12,46 +12,14 @@ class Filter;
 
 class Graph {
 public:
-	// Thrown on non-zero callback return value.
-	struct CallbackError { int code; };
+	struct Callback {
+		int (*func)(void *user, unsigned i, unsigned left, unsigned right);
+		void *user;
 
-	/**
-	 * User-defined I/O callback functor.
-	 */
-	class Callback {
-		typedef int (*func_type)(void *user, unsigned i, unsigned left, unsigned right);
+		Callback(std::nullptr_t x = nullptr) : func{}, user{} {}
+		Callback(int (*func)(void *, unsigned, unsigned, unsigned), void *user) : func{func}, user{user} {}
 
-		func_type m_func;
-		void *m_user;
-	public:
-		/**
-		 * Default construct callback, creating a null callback.
-		 */
-		Callback(std::nullptr_t x = nullptr) : m_func{}, m_user{} {}
-
-		/**
-		 * Construct a callback from user-defined function.
-		 *
-		 * @param func function pointer
-		 * @param user user private data
-		 */
-		Callback(func_type func, void *user) : m_func{ func }, m_user{ user } {}
-
-		/**
-		 * Check if callback is set.
-		 *
-		 * @return true if callback is not null, else false
-		 */
-		explicit operator bool() const { return !!m_func; }
-
-		/**
-		 * Invoke user-defined callback.
-		 *
-		 * @param i row index of line to read/write
-		 * @param left left column index
-		 * @param right right column index, plus one
-		 */
-		void operator()(unsigned i, unsigned left, unsigned right) const;
+		explicit operator bool() const { return !!func; }
 	};
 
 	// Sinks and sources.

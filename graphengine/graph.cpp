@@ -557,7 +557,11 @@ class GraphImpl::impl {
 			state->reset_initialized(m_nodes.size());
 
 			node->begin_frame(state, j, j_end, plane);
-			node->process(state, format.height, plane);
+			try {
+				node->process(state, format.height, plane);
+			} catch (const CallbackError &) {
+				throw std::runtime_error{ "user callback failed" };
+			}
 
 			j = j_end;
 		}
@@ -802,13 +806,6 @@ public:
 		}
 	}
 };
-
-
-void Graph::Callback::operator()(unsigned i, unsigned left, unsigned right) const
-{
-	if (int ret = m_func(m_user, i, left, right))
-		throw CallbackError{ ret };
-}
 
 
 GraphImpl *GraphImpl::from(Graph *graph) noexcept { return dynamic_cast<GraphImpl *>(graph); }
