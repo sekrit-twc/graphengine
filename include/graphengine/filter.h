@@ -1,5 +1,3 @@
-#pragma once
-
 #ifndef GRAPHENGINE_FILTER_H_
 #define GRAPHENGINE_FILTER_H_
 

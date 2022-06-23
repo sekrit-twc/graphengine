@@ -1,5 +1,3 @@
-#pragma once
-
 #ifndef GRAPHENGINE_NAMESPACE_H_
 #define GRAPHENGINE_NAMESPACE_H_
 

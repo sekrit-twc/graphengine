@@ -1,5 +1,3 @@
-#pragma once
-
 #ifndef GRAPHENGINE_TYPES_H_
 #define GRAPHENGINE_TYPES_H_
 
