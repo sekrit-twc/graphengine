@@ -151,6 +151,7 @@
     <ClInclude Include="..\..\graphengine\x86\cpuinfo_x86.h" />
     <ClInclude Include="..\..\include\graphengine\filter.h" />
     <ClInclude Include="..\..\include\graphengine\graph.h" />
+    <ClInclude Include="..\..\include\graphengine\namespace.h" />
     <ClInclude Include="..\..\include\graphengine\types.h" />
   </ItemGroup>
   <ItemGroup>

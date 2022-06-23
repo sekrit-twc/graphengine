@@ -5,6 +5,7 @@
 #endif
 
 namespace graphengine {
+namespace GRAPHENGINE_IMPL_NAMESPACE {
 
 unsigned long cpu_cache_per_thread()
 {
@@ -16,4 +17,5 @@ unsigned long cpu_cache_per_thread()
 	return cache ? cache : 1UL << 20;
 }
 
+} // namespace impl
 } // namespace graphengine

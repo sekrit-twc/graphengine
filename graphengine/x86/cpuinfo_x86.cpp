@@ -16,6 +16,7 @@
 #include "cpuinfo_x86.h"
 
 namespace graphengine {
+namespace GRAPHENGINE_IMPL_NAMESPACE {
 
 namespace {
 
@@ -320,6 +321,7 @@ unsigned long cpu_cache_per_thread_x86() noexcept
 		return cache.l1d / cache.l1d_threads;
 }
 
+} // namespace impl
 } // namespace graphengine
 
 #endif // defined(__i386) || defined(_M_IX86) || defined(_M_X64) || defined(__x86_64__)

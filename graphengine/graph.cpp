@@ -3,7 +3,6 @@
 #include <cassert>
 #include <cmath>
 #include <climits>
-#include <cstdint>
 #include <cstring>
 #include <exception>
 #include <limits>
@@ -25,6 +24,7 @@
   catch (...) { throw Exception{ Exception::UNKNOWN, "unknown exception" }; }
 
 namespace graphengine {
+namespace GRAPHENGINE_IMPL_NAMESPACE {
 
 namespace {
 
@@ -122,8 +122,8 @@ public:
 
 	void process(const BufferDescriptor *in, const BufferDescriptor *out, unsigned i, unsigned left, unsigned right, void *, void *) const noexcept override
 	{
-		const uint8_t *src_ptr = in->get_line<uint8_t>(i);
-		uint8_t *dst_ptr = out->get_line<uint8_t>(i);
+		const unsigned char *src_ptr = in->get_line<unsigned char>(i);
+		unsigned char *dst_ptr = out->get_line<unsigned char>(i);
 		src_ptr += static_cast<size_t>(left) * m_desc.format.bytes_per_sample;
 		dst_ptr += static_cast<size_t>(left) * m_desc.format.bytes_per_sample;
 		std::memcpy(dst_ptr, src_ptr, static_cast<size_t>(right - left) * m_desc.format.bytes_per_sample);
@@ -646,7 +646,7 @@ public:
 		if (num_planes > NODE_MAX_PLANES)
 			throw Exception{ Exception::INVALID_DESCRIPTOR, "maximum number of endpoint planes exceeded" };
 		if (m_sink_id >= 0)
-			throw Exception{ Exception::ILLEGAL_STATE, "sink already set"};
+			throw Exception{ Exception::ILLEGAL_STATE, "sink already set" };
 
 		auto original_resolved_deps = resolve_node_deps(num_planes, deps);
 		size_t original_node_count = m_nodes.size();
@@ -776,9 +776,9 @@ public:
 		};
 
 		for (size_t i = 0; i < m_source_ids.size(); ++i) {
-			buffering[i] = { m_source_ids[i], max_buffering(m_source_ids[i])};
+			buffering[i] = { m_source_ids[i], max_buffering(m_source_ids[i]) };
 		}
-		buffering[m_source_ids.size()] = {m_sink_id, max_buffering(m_sink_id)};
+		buffering[m_source_ids.size()] = { m_sink_id, max_buffering(m_sink_id) };
 
 		return buffering;
 	}
@@ -1014,4 +1014,5 @@ void SubGraphImpl::connect(Graph *graph, size_t num_sources, const Mapping sourc
 	return m_impl->connect(graph, num_sources, sources, sinks);
 } CATCH
 
+} // namespace impl
 } // namespace graphengine

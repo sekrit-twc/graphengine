@@ -157,9 +157,6 @@
     <ClCompile Include="..\..\test\validator.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\graphengine\filter.h" />
-    <ClInclude Include="..\..\include\graphengine\graph.h" />
-    <ClInclude Include="..\..\include\graphengine\types.h" />
     <ClInclude Include="..\..\test\validator.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

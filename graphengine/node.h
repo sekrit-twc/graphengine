@@ -5,14 +5,17 @@
 
 #include <memory>
 #include <utility>
+#include "graphengine/namespace.h"
 #include "graphengine/types.h"
 
 namespace graphengine {
 
+class Filter;
+
+namespace GRAPHENGINE_IMPL_NAMESPACE {
+
 class Simulation;
 class FrameState;
-
-class Filter;
 
 class Node {
 	node_id m_id;
@@ -75,6 +78,7 @@ std::unique_ptr<Node> make_source_node(node_id id, unsigned num_planes, const Pl
 std::unique_ptr<Node> make_sink_node(node_id id, unsigned num_planes, const node_dep parents[]);
 std::unique_ptr<Node> make_transform_node(node_id id, const Filter *filter, const node_dep deps[]);
 
+} // namespace impl
 } // namespace graphengine
 
 #endif // GRAPHENGINE_NODE_H_

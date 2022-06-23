@@ -151,9 +151,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\graphengine\filter.h" />
-    <ClInclude Include="..\..\include\graphengine\graph.h" />
-    <ClInclude Include="..\..\include\graphengine\types.h" />
     <ClInclude Include="..\..\testapp\aligned_malloc.h" />
     <ClInclude Include="..\..\testapp\argparse.h" />
     <ClInclude Include="..\..\testapp\mmap.h" />

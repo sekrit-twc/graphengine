@@ -45,6 +45,9 @@
     <ClInclude Include="..\..\include\graphengine\types.h">
       <Filter>Public Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\include\graphengine\namespace.h">
+      <Filter>Public Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\graphengine\graph.cpp">

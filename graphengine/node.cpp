@@ -7,6 +7,7 @@
 #include "state.h"
 
 namespace graphengine {
+namespace GRAPHENGINE_IMPL_NAMESPACE {
 
 namespace {
 
@@ -671,4 +672,5 @@ std::unique_ptr<Node> make_transform_node(node_id id, const Filter *filter, cons
 	return std::make_unique<TransformNode>(id, filter, deps);
 }
 
+} // namespace impl
 } // namespace graphengine

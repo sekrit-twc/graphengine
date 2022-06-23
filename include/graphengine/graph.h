@@ -4,6 +4,7 @@
 #define GRAPHENGINE_GRAPH_H_
 
 #include <cstddef>
+#include "graphengine/namespace.h"
 #include "graphengine/types.h"
 
 namespace graphengine {
@@ -85,6 +86,8 @@ public:
 };
 
 
+namespace GRAPHENGINE_IMPL_NAMESPACE {
+
 class GraphImpl : public Graph {
 	class impl;
 
@@ -157,6 +160,11 @@ public:
 	// Connect subgraph to main graph.
 	void connect(Graph *graph, size_t num_sources, const Mapping sources[], Mapping sinks[]) const override;
 };
+
+} // namespace impl
+
+using GRAPHENGINE_IMPL_NAMESPACE::GraphImpl;
+using GRAPHENGINE_IMPL_NAMESPACE::SubGraphImpl;
 
 } // namespace graphengine
 

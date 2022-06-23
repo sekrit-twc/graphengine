@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 #include "graphengine/graph.h"
+#include "graphengine/namespace.h"
 #include "graphengine/types.h"
 
 #ifndef GRAPHENGINE_ENABLE_GUARD_PAGE
@@ -21,6 +22,7 @@
 #endif
 
 namespace graphengine {
+namespace GRAPHENGINE_IMPL_NAMESPACE {
 
 class Simulation {
 	struct node_state {
@@ -263,6 +265,7 @@ public:
 	void reset_initialized(size_t n) { std::fill_n(m_init_flags, n, 0); }
 };
 
+} // namespace impl
 } // namespace graphengine
 
 #endif // GRAPHENGINE_STATE_H_
