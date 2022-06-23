@@ -1,0 +1,45 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{3a6c30fe-6233-4ed9-81d4-479563a56f13}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\include">
+      <UniqueIdentifier>{c29b5363-21a6-4136-af10-0c3711da4eb3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\sha1">
+      <UniqueIdentifier>{9f0b6971-72dc-4151-be58-8f0a51e21fef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{797c7fa4-4e4c-451a-b788-147426a7e8e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\sha1">
+      <UniqueIdentifier>{e7dd32b8-46e3-4318-a09b-54fcf365936e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\filter.h">
+      <Filter>Header Files\include</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\filter_validation.h">
+      <Filter>Header Files\include</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\types.h">
+      <Filter>Header Files\include</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\filter_validation\sha1\config.h">
+      <Filter>Header Files\sha1</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\filter_validation\sha1\sha1.h">
+      <Filter>Header Files\sha1</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\filter_validation\sha1\sha1.c">
+      <Filter>Source Files\sha1</Filter>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\filter_validation\filter_validation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

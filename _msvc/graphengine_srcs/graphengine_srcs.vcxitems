@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <ItemsProjectGuid>{e6991282-4ad2-4cc1-8da5-5b44d2053a3c}</ItemsProjectGuid>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectCapability Include="SourceItemsFromImports" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\graphengine\cpuinfo.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\graphengine\node.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\graphengine\state.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\graphengine\x86\cpuinfo_x86.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\filter.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\graph.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\namespace.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\types.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\graphengine\cpuinfo.cpp">
+      <ObjectFileName>$(IntDir)graphengine\</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\graphengine\graph.cpp">
+      <ObjectFileName>$(IntDir)graphengine\</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\graphengine\node.cpp">
+      <ObjectFileName>$(IntDir)graphengine\</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\graphengine\x86\cpuinfo_x86.cpp">
+      <ObjectFileName>$(IntDir)graphengine\</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+</Project>

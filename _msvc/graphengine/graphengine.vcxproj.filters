@@ -13,54 +13,5 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\x86">
-      <UniqueIdentifier>{e6209e0a-a0d3-471f-b162-9045bfe520bb}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\x86">
-      <UniqueIdentifier>{797eb50b-853f-435b-81fe-4a635fd40764}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Public Header Files">
-      <UniqueIdentifier>{b7bd3bbe-e7d7-49fb-b56c-92efc6231456}</UniqueIdentifier>
-    </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\graphengine\node.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\state.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\cpuinfo.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\graphengine\x86\cpuinfo_x86.h">
-      <Filter>Header Files\x86</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\graphengine\filter.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\graphengine\graph.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\graphengine\types.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\graphengine\namespace.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\graphengine\graph.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\graphengine\node.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\graphengine\cpuinfo.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\graphengine\x86\cpuinfo_x86.cpp">
-      <Filter>Source Files\x86</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>

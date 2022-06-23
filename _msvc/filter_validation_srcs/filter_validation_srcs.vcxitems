@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <ItemsProjectGuid>{41f372ec-398b-40be-a743-791bc42eb60c}</ItemsProjectGuid>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectCapability Include="SourceItemsFromImports" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\filter_validation\sha1\config.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\filter_validation\sha1\sha1.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\filter.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\filter_validation.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)..\..\include\graphengine\types.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\filter_validation\filter_validation.cpp">
+      <ObjectFileName>$(IntDir)graphengine\</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\filter_validation\sha1\sha1.c">
+      <ObjectFileName>$(IntDir)graphengine\</ObjectFileName>
+    </ClCompile>
+  </ItemGroup>
+</Project>

@@ -56,6 +56,7 @@
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="Shared">
+    <Import Project="..\graphengine_srcs\graphengine_srcs.vcxitems" Label="Shared" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -144,22 +145,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\graphengine\cpuinfo.h" />
-    <ClInclude Include="..\..\graphengine\node.h" />
-    <ClInclude Include="..\..\graphengine\state.h" />
-    <ClInclude Include="..\..\graphengine\x86\cpuinfo_x86.h" />
-    <ClInclude Include="..\..\include\graphengine\filter.h" />
-    <ClInclude Include="..\..\include\graphengine\graph.h" />
-    <ClInclude Include="..\..\include\graphengine\namespace.h" />
-    <ClInclude Include="..\..\include\graphengine\types.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\graphengine\cpuinfo.cpp" />
-    <ClCompile Include="..\..\graphengine\graph.cpp" />
-    <ClCompile Include="..\..\graphengine\node.cpp" />
-    <ClCompile Include="..\..\graphengine\x86\cpuinfo_x86.cpp" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

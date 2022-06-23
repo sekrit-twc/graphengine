@@ -13,39 +13,5 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\sha1">
-      <UniqueIdentifier>{641ce999-fe2a-4682-a1b1-26e892fbe248}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\sha1">
-      <UniqueIdentifier>{479930b0-d047-4111-8950-ee6108aa9c68}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Public Header Files">
-      <UniqueIdentifier>{fbeb9d9a-1013-490c-a637-ac79f171fa84}</UniqueIdentifier>
-    </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\include\graphengine\filter.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\graphengine\filter_validation.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\graphengine\types.h">
-      <Filter>Public Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\filter_validation\sha1\config.h">
-      <Filter>Header Files\sha1</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\filter_validation\sha1\sha1.h">
-      <Filter>Header Files\sha1</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\filter_validation\sha1\sha1.c">
-      <Filter>Source Files\sha1</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\filter_validation\filter_validation.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>
