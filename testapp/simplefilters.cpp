@@ -32,6 +32,8 @@ public:
 		m_desc.alignment_mask = 7;
 	}
 
+	int version() const noexcept override { return VERSION; }
+
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 
 	pair_unsigned get_row_deps(unsigned i) const noexcept override
@@ -168,6 +170,8 @@ public:
 		m_desc.flags.in_place = true;
 	}
 
+	int version() const noexcept override { return VERSION; }
+
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 
 	pair_unsigned get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
@@ -226,6 +230,8 @@ public:
 		m_desc.num_planes = 1;
 		m_desc.step = 1;
 	}
+
+	int version() const noexcept override { return VERSION; }
 
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 
@@ -291,6 +297,8 @@ public:
 
 		m_desc.flags.in_place = true;
 	}
+
+	int version() const noexcept override { return VERSION; }
 
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 

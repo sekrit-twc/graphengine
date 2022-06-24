@@ -22,6 +22,8 @@ public:
 
 	explicit ValidationFilter(const char *name) : name{ name } {}
 
+	int version() const noexcept override { return VERSION; }
+
 	const graphengine::FilterDescriptor &descriptor() const noexcept override final { return desc; }
 
 	void init_context(void *context) const noexcept override final;

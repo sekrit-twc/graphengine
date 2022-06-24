@@ -44,6 +44,8 @@ public:
 
 	Filter &operator=(const Filter &) = delete;
 
+	virtual int version() const noexcept = 0;
+
 	virtual const FilterDescriptor &descriptor() const noexcept = 0;
 
 	virtual pair_unsigned get_row_deps(unsigned i) const noexcept = 0;

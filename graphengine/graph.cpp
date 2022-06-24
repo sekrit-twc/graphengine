@@ -112,6 +112,8 @@ public:
 		m_desc.flags.in_place = true;
 	}
 
+	int version() const noexcept override { return VERSION; }
+
 	const FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 
 	pair_unsigned get_row_deps(unsigned i) const noexcept override { return{ i, i + 1 }; }
@@ -140,6 +142,8 @@ public:
 		m_desc.step = m_desc.format.height;
 		m_desc.flags.entire_col = 1;
 	}
+
+	int version() const noexcept override { return VERSION; }
 
 	const FilterDescriptor &descriptor() const noexcept override { return m_desc; }
 
@@ -625,6 +629,9 @@ public:
 
 	node_id add_transform(const Filter *filter, const node_dep_desc deps[])
 	{
+		if (filter->version() != Filter::VERSION)
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "incompatible filter version" };
+
 		if (m_flags.pipelining_disabled) {
 			m_pipeline_wrappers.push_back(std::make_unique<PipelineDisableFilter>(filter));
 			filter = m_pipeline_wrappers.back().get();

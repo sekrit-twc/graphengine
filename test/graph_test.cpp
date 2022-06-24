@@ -21,6 +21,8 @@ public:
 		m_desc.step = 1;
 	}
 
+	int version() const noexcept override { return VERSION; }
+
 	graphengine::FilterDescriptor &mutable_descriptor() { return m_desc; }
 
 	const graphengine::FilterDescriptor &descriptor() const noexcept override { return m_desc; }
