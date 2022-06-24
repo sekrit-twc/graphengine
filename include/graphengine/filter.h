@@ -12,23 +12,25 @@ struct FilterDescriptor {
 	unsigned num_planes;
 	unsigned step;
 	unsigned alignment_mask;
+
 	struct {
-		unsigned char enabled : 1;
-		unsigned char preferred_index : 2;
-		unsigned char disallow_mask : 3;
-	} inplace_hint;
-
-	size_t context_size;
-	size_t scratchpad_size;
-
-	struct flags {
 		unsigned char stateful : 1;
 		unsigned char in_place : 1;
 		unsigned char entire_row : 1;
 		unsigned char entire_col : 1;
+		unsigned short : 0;
 	} flags;
-};
 
+	struct {
+		unsigned char enabled : 1;
+		unsigned char preferred_index : 2;
+		unsigned char disallow_mask : 3;
+		unsigned short : 0;
+	} inplace_hint;
+
+	size_t context_size;
+	size_t scratchpad_size;
+};
 
 class Filter {
 public:
