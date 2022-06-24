@@ -5,60 +5,93 @@
 
 namespace graphengine {
 
+/** All-ones bit pattern representing an unbuffered plane. */
 constexpr unsigned BUFFER_MAX = ~0U;
 
+/** Maximum number of filter input planes. */
 constexpr unsigned FILTER_MAX_DEPS = 3;
+/** Maximum number of filter output planes. */
 constexpr unsigned FILTER_MAX_PLANES = 3;
+
+/**
+ * Maximum number of planes in a graph node.
+ *
+ * One greater than {@p FILTER_MAX_PLANES} to account for packed alpha channels
+ * in graph endpoints. Filter nodes are limited to FILTER_MAX_PLANES.
+ */
 constexpr unsigned NODE_MAX_PLANES = 4;
 
+/** Maximum number of external nodes in a graph (7 inputs + 1 output). */
 constexpr unsigned GRAPH_MAX_ENDPOINTS = 8;
 
+/** Node handle. */
 typedef int node_id;
+/** Negative ids correspond to invalid nodes. */
 constexpr node_id null_node = -1;
+/** Maximum number of nodes per graph. */
 constexpr node_id node_id_max = 1023;
 
+/** Graph edges connect to a specific plane in a node. */
 struct node_dep_desc {
-	node_id id = null_node;
-	unsigned plane = 0;
+	node_id id = null_node; /**< Node containing plane. */
+	unsigned plane = 0;     /**< Plane index. */
 };
 constexpr node_dep_desc null_dep{};
 
+/**
+ * Plane descriptor. Planes are 2D arrays of samples.
+ */
 struct PlaneDescriptor {
-	unsigned width;
-	unsigned height;
-	unsigned bytes_per_sample;
+	unsigned width;            /**< Width, or the inner dimension. */
+	unsigned height;           /**< Height, or the outer dimension. */
+	unsigned bytes_per_sample; /**< 1, 2, or 4. */
 };
 
+/**
+ * Buffer descriptor.
+ *
+ * Processing occurs in circular arrays holding a power-of-2 number of rows.
+ * The address of the i-th row is:
+ *   ((char *)ptr) + (ptrdiff_t)(i & mask) * stride
+ */
 struct BufferDescriptor {
-	void *ptr;
-	ptrdiff_t stride;
-	unsigned mask;
+	void *ptr;        /** Pointer to first row. */
+	ptrdiff_t stride; /** Distance between row in bytes. */
+	unsigned mask;    /** Circular array mask, or {@p BUFFER_MAX} for unbuffered. */
 
+	/**
+	 * Helper function for calculating row addresses.
+	 *
+	 * @tparam T cast pointer to type
+	 * @param i row index
+	 * @return pointer to row
+	 */
 	template <class T = void>
 	T *get_line(unsigned i) const
 	{
-		return reinterpret_cast<T *>(static_cast<unsigned char *>(ptr) + static_cast<ptrdiff_t>(i & mask) * stride);
+		return (T *)((unsigned char *)ptr + (ptrdiff_t)(i & mask) * stride);
 	}
 };
 
+/** Exception type. */
 struct Exception {
 	enum {
 		UNKNOWN = 0,
 		OUT_OF_MEMORY = 1,
 		USER_CALLBACK = 2,
 		ILLEGAL_STATE = 3,
-		INVALID_DESCRIPTOR = 4,
-		INVALID_DIMENSIONS = 5,
-		INVALID_NODE = 6,
-		LIMIT_EXCEEDED = 7,
+		LIMIT_EXCEEDED = 4,
+		INVALID_DESCRIPTOR = 5,
+		INVALID_DIMENSIONS = 6,
+		INVALID_NODE = 7,
 	};
 
-	int code;
-	const char *msg;
+	int code;        /**< Error code, see above. */
+	const char *msg; /**< Error message, statically allocated. */
 };
 
 
-// STL replacement types.
+// STL replacement types for API/ABI functions.
 namespace detail {
 
 template <class T, size_t N>

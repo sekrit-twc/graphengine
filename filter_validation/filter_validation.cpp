@@ -889,7 +889,7 @@ class FilterValidation::impl {
 		return true;
 	} CATCH
 
-	bool test_inplace(bool honor_preferred = true)
+	bool test_inplace(bool honor_preferred = true) TRY
 	{
 		SCOPED_TRACE(honor_preferred ? "test_inplace" : "test_inplace_nonpreferred");
 		assert(m_cached_image);
@@ -1011,17 +1011,13 @@ class FilterValidation::impl {
 			});
 
 		return true;
-	}
+	} CATCH
 
 	bool test_inplace_nonpreferred_plane() { return test_inplace(false); }
 #undef CATCH
 #undef TRY
 public:
-	impl(const Filter *filter, const PlaneDescriptor &dep_format) :
-		impl(filter, std::vector<PlaneDescriptor>(FILTER_MAX_DEPS, dep_format).data())
-	{}
-
-	impl(const Filter *filter, const PlaneDescriptor dep_format[FILTER_MAX_DEPS]) :
+	impl(const Filter *filter, const PlaneDescriptor &dep_format, const unsigned bytes_per_sample[]) :
 		m_filter{ filter },
 		m_ref_filter{},
 		m_dep_format{},
@@ -1029,13 +1025,19 @@ public:
 		m_filter_pixel_format{},
 		m_snr{ INFINITY }
 	{
+		const bool have_dep_format = dep_format.width || dep_format.height;
+
 		const FilterDescriptor &desc = m_filter->descriptor();
-		if (desc.num_deps > 0 && !dep_format)
+		if (desc.num_deps > 0 && !have_dep_format)
 			throw std::invalid_argument{ "must specify input format" };
+		if (!dep_format.bytes_per_sample && !bytes_per_sample)
+			throw std::invalid_argument{ "must specify bytes_per_sample" };
 
 		for (unsigned p = 0; p < desc.num_deps; ++p) {
-			m_dep_format[p] = dep_format[p];
-			m_dep_pixel_format[p].bits_per_sample = dep_format[p].bytes_per_sample * CHAR_BIT;
+			m_dep_format[p] = dep_format;
+			if (bytes_per_sample)
+				m_dep_format[p].bytes_per_sample = bytes_per_sample[p];
+			m_dep_pixel_format[p].bits_per_sample = m_dep_format[p].bytes_per_sample * CHAR_BIT;
 		}
 		for (unsigned p = 0; p < desc.num_planes; ++p) {
 			m_filter_pixel_format[p].bits_per_sample = desc.format.bytes_per_sample * CHAR_BIT;
@@ -1135,22 +1137,13 @@ FilterValidation::FilterValidation(const Filter *filter) :
 	FilterValidation(filter, PlaneDescriptor{})
 {}
 
-FilterValidation::FilterValidation(const Filter *filter, const PlaneDescriptor &dep_format) :
-	m_impl(new impl(filter, dep_format))
-{}
-
-FilterValidation::FilterValidation(const Filter *filter, const PlaneDescriptor dep_format[FILTER_MAX_DEPS]) :
-	m_impl(new impl(filter, dep_format))
+FilterValidation::FilterValidation(const Filter *filter, const PlaneDescriptor &dep_format, const unsigned bytes_per_sample[]) :
+	m_impl(new impl(filter, dep_format, bytes_per_sample))
 {}
 
 FilterValidation::FilterValidation(FilterValidation &&other) noexcept = default;
 FilterValidation::~FilterValidation() = default;
 FilterValidation &FilterValidation::operator=(FilterValidation &&other) noexcept = default;
-
-FilterValidation &FilterValidation::set_reference_filter(const Filter *ref_filter)
-{
-	return set_reference_filter(ref_filter, INFINITY);
-}
 
 FilterValidation &FilterValidation::set_reference_filter(const Filter *ref_filter, double snr_thresh)
 {
