@@ -45,6 +45,17 @@ TEST(GraphAndNodeTest, test_simple)
 	});
 }
 
+TEST(GraphAndNodeTest, test_multiple_refs)
+{
+	run_test({
+		{ "source",  "Source", {}, { 640, 480, 1, 1 } },
+		{ "point.0", "Point",  { { "source" } } },
+		{ "point.1", "Point",  { { "point.0" } } },
+		{ "point.2", "Point",  { { "point.1" } } },
+		{ "sink",    "Sink",   { { "point.0" }, { "point.1" }, { "point.2" } } },
+	});
+}
+
 TEST(GraphAndNodeTest, test_masktools_like)
 {
 	run_test({
