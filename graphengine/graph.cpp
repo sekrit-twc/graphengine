@@ -255,7 +255,7 @@ class GraphImpl::impl {
 		if (m_nodes.size() > node_id_max)
 			throw Exception{ Exception::LIMIT_EXCEEDED, "maximum number of nodes exceeded" };
 
-		assert(node->id() == m_nodes.size());
+		assert(static_cast<size_t>(node->id()) == m_nodes.size());
 		m_nodes.push_back(std::move(node));
 	}
 
