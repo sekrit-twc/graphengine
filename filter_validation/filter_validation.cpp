@@ -426,11 +426,11 @@ std::string pixel_to_str(const void *ptr, unsigned bytes_per_sample, bool floati
 
 class Image {
 public:
-	static constexpr uint8_t GUARD_BYTE = 0xFE;
-	static constexpr unsigned GUARD_ROWS = 64;
-	static constexpr unsigned GUARD_COLS = 64;
+	enum : uint8_t { GUARD_BYTE = 0xFE };
+	enum : unsigned { GUARD_ROWS = 64 };
+	enum : unsigned { GUARD_COLS = 64 };
 
-	static constexpr uint32_t FILL_VAL = 0xCDCDCDCD;
+	enum : uint32_t { FILL_VAL = 0xCDCDCDCD };
 private:
 	std::vector<AlignedVector<uint8_t>> m_plane_data;
 	std::vector<BufferDescriptor> m_buffer_desc;
