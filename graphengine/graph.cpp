@@ -187,6 +187,7 @@ class GraphImpl::impl {
 		std::vector<node_result> nodes;
 		size_t cache_footprint = {};
 		size_t tmp_size = {};
+		size_t scratchpad_size = {};
 		unsigned step = {};
 		bool no_tiling = {};
 
@@ -362,6 +363,7 @@ class GraphImpl::impl {
 			result.tmp_size += node_result.context_size;
 		}
 		result.tmp_size += sim.scratchpad_size();
+		result.scratchpad_size = sim.scratchpad_size();
 
 		// Cache footprint also includes the endpoints.
 		const auto node_footprint = [&](node_id id)
@@ -510,9 +512,10 @@ class GraphImpl::impl {
 			state->set_context(static_cast<node_id>(i), context_data);
 		}
 
-		// Allocate scratchpad.
+		// Allocate scratchpad
 		allocate_guard_page();
 		state->set_scratchpad(head);
+		head += sim.scratchpad_size;
 		allocate_guard_page();
 
 #ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
