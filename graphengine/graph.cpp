@@ -65,15 +65,15 @@ void validate_plane_desc(const PlaneDescriptor &desc)
 	if (desc.bytes_per_sample != 1 && desc.bytes_per_sample != 2 && desc.bytes_per_sample != 4)
 		throw Exception{ Exception::INVALID_DESCRIPTOR, "bytes_per_sample must be 1, 2, or 4" };
 
-	constexpr unsigned max_width = static_cast<unsigned>(UINT_MAX) & ~63U;
+	constexpr unsigned max_width = static_cast<unsigned>(UINT_MAX) & ~(ALIGNMENT_MASK);
 	if (max_width < desc.width)
 		throw Exception{ Exception::INVALID_DIMENSIONS, "frame dimensions too large" };
 
-	constexpr size_t max_plane_size = static_cast<size_t>(PTRDIFF_MAX) & ~static_cast<size_t>(63);
+	constexpr size_t max_plane_size = static_cast<size_t>(PTRDIFF_MAX) & ~static_cast<size_t>(ALIGNMENT_MASK);
 	if (max_plane_size / desc.bytes_per_sample < desc.width)
 		throw Exception{ Exception::INVALID_DIMENSIONS, "frame dimensions too large" };
 
-	size_t rowsize = ((static_cast<size_t>(desc.bytes_per_sample) * desc.width) + 63) & ~static_cast<size_t>(63);
+	size_t rowsize = ((static_cast<size_t>(desc.bytes_per_sample) * desc.width) + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
 	if (max_plane_size / rowsize < desc.height)
 		throw Exception{ Exception::INVALID_DIMENSIONS, "frame dimensions too large" };
 }
@@ -87,12 +87,12 @@ unsigned auto_tile_width(size_t cache_size_hint, unsigned width, size_t cache_fo
 	if (tile > (width / 5) * 4)
 		return width;
 	if (tile > width / 2)
-		return ((width / 2) + 63) & ~63U;
+		return ((width / 2) + ALIGNMENT_MASK) & ~(ALIGNMENT_MASK);
 	if (tile > width / 3)
-		return ((width / 3) + 63) & ~63U;
+		return ((width / 3) + ALIGNMENT_MASK) & ~(ALIGNMENT_MASK);
 
 	// Classify graph as uncacheable if minimum tile exceeds cache by 10%.
-	tile = std::max(tile & ~63U, TILE_WIDTH_MIN);
+	tile = std::max(tile & ~(ALIGNMENT_MASK), TILE_WIDTH_MIN);
 	if (tile == TILE_WIDTH_MIN && static_cast<double>(tile) / width * cache_footprint > cache_size * 1.1)
 		return width;
 
@@ -351,14 +351,15 @@ class GraphImpl::impl {
 				// External nodes are allocated by the caller.
 				if (!node->sourcesink()) {
 					unsigned buffer_lines = mask == BUFFER_MAX ? desc.height : mask + 1;
-					node_result.cache_size_bytes[p] = static_cast<size_t>(buffer_lines) * desc.width * desc.bytes_per_sample;
-					node_result.cache_stride[p] = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
+					size_t rowsize = (static_cast<size_t>(desc.width) * desc.bytes_per_sample + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
+					node_result.cache_size_bytes[p] = static_cast<size_t>(buffer_lines) * rowsize;
+					node_result.cache_stride[p] = rowsize;
 					result.tmp_size += node_result.cache_size_bytes[p];
 				}
 				node_result.cache_mask[p] = mask;
 			}
 
-			node_result.context_size = (sim.context_size(id) + 63) & ~static_cast<size_t>(63);
+			node_result.context_size = (sim.context_size(id) + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
 			node_result.initial_cursor = sim.cursor_min(id);
 			result.tmp_size += node_result.context_size;
 		}
