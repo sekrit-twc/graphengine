@@ -155,16 +155,12 @@ void thread_func(graphengine::Graph *graph, std::atomic_int *counter, unsigned w
 	Frame source_frame = allocate_frame(w, h);
 	Frame overlay_frame = allocate_frame(overlay_w, overlay_h);
 	Frame result_frame = allocate_frame(w, h);
-	graphengine::Graph::EndpointConfiguration endpoints{};
 
-	endpoints[0].id = source;
-	std::copy_n(source_frame.buffer, 3, endpoints[0].buffer);
-
-	endpoints[1].id = overlay;
-	std::copy_n(overlay_frame.buffer, 3, endpoints[1].buffer);
-
-	endpoints[2].id = output;
-	std::copy_n(result_frame.buffer, 3, endpoints[2].buffer);
+	graphengine::Graph::Endpoint endpoints[] = {
+		{ source, source_frame.buffer },
+		{ overlay, overlay_frame.buffer },
+		{ output, result_frame.buffer },
+	};
 
 	std::shared_ptr<void> tmp{ aligned_malloc(graph->get_tmp_size(), 64), aligned_free };
 
@@ -307,16 +303,12 @@ int main(int argc, char **argv)
 
 		if (args.threads == 1) {
 			Frame result_frame = allocate_frame(source_w, source_h);
-			graphengine::Graph::EndpointConfiguration endpoints{};
 
-			endpoints[0].id = source;
-			std::copy_n(source_frame.buffer, 3, endpoints[0].buffer);
-
-			endpoints[1].id = overlay;
-			std::copy_n(overlay_frame.buffer, 3, endpoints[1].buffer);
-
-			endpoints[2].id = output;
-			std::copy_n(result_frame.buffer, 3, endpoints[2].buffer);
+			graphengine::Graph::Endpoint endpoints[] = {
+				{ source, source_frame.buffer },
+				{ overlay, overlay_frame.buffer },
+				{ output, result_frame.buffer },
+			};
 
 			std::shared_ptr<void> tmp{ aligned_malloc(filtergraph.get_tmp_size(), 64), aligned_free };
 

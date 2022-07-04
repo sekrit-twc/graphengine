@@ -463,7 +463,7 @@ class GraphImpl::impl {
 
 	bool can_run_planar() const { return !m_flags.planar_disabled && m_planar_simulation_result[0] != nullptr; }
 
-	void prepare_frame_state(FrameState *state, const SimulationResult &sim, const EndpointConfiguration &endpoints, void *tmp) const
+	void prepare_frame_state(FrameState *state, const SimulationResult &sim, const Endpoint endpoints[], void *tmp) const
 	{
 		unsigned char *head = static_cast<unsigned char *>(tmp);
 		auto allocate = [&](auto *&ptr, size_t count) { ptr = reinterpret_cast<decltype(ptr)>(head); head += sizeof(*ptr) * count; };
@@ -548,7 +548,7 @@ class GraphImpl::impl {
 		return tile_width;
 	}
 
-	void run_node(Node *node, const SimulationResult &sim, const EndpointConfiguration &endpoints, unsigned plane, void *tmp) const
+	void run_node(Node *node, const SimulationResult &sim, const Endpoint endpoints[], unsigned plane, void *tmp) const
 	{
 		std::aligned_union_t<0, FrameState> _;
 		static_assert(std::is_trivially_destructible<FrameState>::value, "destructor not allowed");
@@ -794,15 +794,15 @@ public:
 		return buffering;
 	}
 
-	void run(const EndpointConfiguration &endpoints, void *tmp) const
+	void run(const Endpoint endpoints[], void *tmp) const
 	{
 		if (m_sink_id < 0)
 			throw Exception{ Exception::ILLEGAL_STATE, "sink not set" };
 
 		bool planar = can_run_planar();
 		if (planar) {
-			auto endpoints_begin = endpoints.begin();
-			auto endpoints_end = endpoints.begin() + m_source_ids.size() + 1;
+			const Endpoint *endpoints_begin = endpoints;
+			const Endpoint *endpoints_end = endpoints + m_source_ids.size() + 1;
 			planar = std::find_if(endpoints_begin, endpoints_end, [](const Endpoint &e) { return !!e.callback; }) == endpoints_end;
 		}
 
@@ -872,7 +872,7 @@ Graph::BufferingRequirement GraphImpl::get_buffering_requirement() const TRY
 	return m_impl->get_buffering_requirement();
 } CATCH
 
-void GraphImpl::run(const EndpointConfiguration &endpoints, void *tmp) const TRY
+void GraphImpl::run(const Endpoint *endpoints, void *tmp) const TRY
 {
 	return m_impl->run(endpoints, tmp);
 } CATCH

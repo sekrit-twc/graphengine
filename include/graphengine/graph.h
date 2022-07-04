@@ -66,9 +66,9 @@ public:
 
 	/** Endpoint descriptor. */
 	struct Endpoint {
-		node_id id = null_node;                   /**< Node id. */
-		BufferDescriptor buffer[NODE_MAX_PLANES]; /**< Planes. */
-		Callback callback;                        /**< Callback. */
+		node_id id = null_node;         /**< Node id. */
+		const BufferDescriptor *buffer; /**< Planes. */
+		Callback callback;              /**< Callback. */
 	};
 
 	/** Buffering requirements for endpoint. */
@@ -77,7 +77,6 @@ public:
 		unsigned mask = 0;      /**< Minimum buffer mask. */
 	};
 
-	typedef detail::array<Endpoint, GRAPH_MAX_ENDPOINTS> EndpointConfiguration;
 	typedef detail::array<Buffering, GRAPH_MAX_ENDPOINTS> BufferingRequirement;
 protected:
 	Graph &operator=(const Graph &) = default;
@@ -167,7 +166,7 @@ public:
 	virtual BufferingRequirement get_buffering_requirement() const = 0;
 
 	/**
-	 * Run the graph.
+	 * Execute the graph.
 	 *
 	 * Graph execution is non-allocating, non-failing, and thread-safe. Graph
 	 * processing may occur in parallel across multiple threads, so long as the
@@ -175,12 +174,12 @@ public:
 	 *
 	 * Execution fails if and only if an endpoint callback returns non-zero.
 	 *
-	 * @param endpoints input/output buffers and callbacks
-	 * @param tmp working memory
+	 * @param[in] endpoints input/output buffers and callbacks
+	 * @param[out] tmp working memory
 	 * @throw Exception on callback error
 	 * @see get_tmp_size()
 	 */
-	virtual void run(const EndpointConfiguration &endpoints, void *tmp) const = 0;
+	virtual void run(const Endpoint endpoints[], void *tmp) const = 0;
 };
 
 /**
@@ -299,7 +298,7 @@ public:
 
 	BufferingRequirement get_buffering_requirement() const override;
 
-	void run(const EndpointConfiguration &endpoints, void *tmp) const override;
+	void run(const Endpoint endpoints[], void *tmp) const override;
 };
 
 /** SubGraph implementation. */

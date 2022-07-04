@@ -329,7 +329,8 @@ class ValidationFilter::ValidationState {
 	std::unordered_map<const ValidationFilter *, std::vector<FilterHistoryRecord>> m_filter_history;
 	std::unordered_map<const ValidationFilter *, std::vector<std::pair<const ValidationFilter *, unsigned>>> m_filter_parents;
 
-	graphengine::Graph::EndpointConfiguration m_endpoint_config = {};
+	graphengine::BufferDescriptor m_endpoint_buffers[graphengine::GRAPH_MAX_ENDPOINTS][graphengine::NODE_MAX_PLANES] = {};
+	graphengine::Graph::Endpoint m_endpoints[graphengine::GRAPH_MAX_ENDPOINTS] = {};
 
 	void clear_buffer_records()
 	{
@@ -366,7 +367,8 @@ public:
 	) :
 		m_filter_parents(filter_parents)
 	{
-		auto iter = m_endpoint_config.begin();
+		auto buffer_iter = m_endpoint_buffers;
+		auto iter = m_endpoints;
 
 		for (const auto &endpoint : endpoints) {
 			iter->id = endpoint.first;
@@ -374,14 +376,16 @@ public:
 			for (size_t p = 0; p < endpoint.second.size(); ++p) {
 				size_t rowsize = (endpoint.second[p].width * endpoint.second[p].bytes_per_sample + 63) & ~static_cast<size_t>(63);
 				m_endpoint_allocs.emplace_back(_aligned_malloc(rowsize * endpoint.second[p].height, 64), _aligned_free);
-				iter->buffer[p] = { m_endpoint_allocs.back().get(), 0, graphengine::BUFFER_MAX };
+				(*buffer_iter)[p] = { m_endpoint_allocs.back().get(), static_cast<ptrdiff_t>(rowsize), graphengine::BUFFER_MAX };
 			}
+			iter->buffer = *buffer_iter;
 
+			++buffer_iter;
 			++iter;
 		}
 	}
 
-	const graphengine::Graph::EndpointConfiguration &endpoint_config() { return m_endpoint_config; }
+	const graphengine::Graph::Endpoint *endpoints() { return m_endpoints; }
 };
 
 void ValidationFilter::init_context(void *context) const noexcept
@@ -631,7 +635,7 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		for (const auto &f : filters) {
 			f->state = &validation_state;
 		}
-		ASSERT_NO_THROW(graph.run(validation_state.endpoint_config(), tmp.get()));
+		ASSERT_NO_THROW(graph.run(validation_state.endpoints(), tmp.get()));
 	};
 
 	{
