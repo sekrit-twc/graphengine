@@ -471,8 +471,8 @@ class GraphImpl::impl {
 		new (state) FrameState{ head, m_nodes.size() };
 
 		// Realign pointer.
-		ptrdiff_t offset = head - static_cast<unsigned char *>(tmp);
-		head += static_cast<ptrdiff_t>(ALIGNMENT) - offset % static_cast<ptrdiff_t>(ALIGNMENT);
+		size_t offset = head - static_cast<unsigned char *>(tmp);
+		head = static_cast<unsigned char *>(tmp) + ((offset + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK));
 
 #ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
 		size_t guard_page_idx = 0;
