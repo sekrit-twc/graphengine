@@ -21,6 +21,7 @@
 #define CATCH \
   catch (const std::bad_alloc &) { throw Exception{ Exception::OUT_OF_MEMORY, "out of memory" }; } \
   catch (const std::exception &) { throw Exception{ Exception::UNKNOWN, "unknown C++ exception" }; } \
+  catch (const graphengine::Exception &) { throw; } \
   catch (...) { throw Exception{ Exception::UNKNOWN, "unknown exception" }; }
 
 namespace graphengine {
