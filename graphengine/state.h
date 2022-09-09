@@ -59,6 +59,8 @@ public:
 		return state.cursor_valid && row >= state.cursor - cache_state.live_range;
 	}
 
+	bool is_live_node(node_id id) const { return m_node_state[id].cursor_valid; }
+
 	unsigned cursor(node_id id, unsigned uninitialized_value) const
 	{
 		return m_node_state[id].cursor_valid ? m_node_state[id].cursor : uninitialized_value;
@@ -178,7 +180,7 @@ public:
 	{
 		auto allocate = [&](auto *&out, size_t count) { out = reinterpret_cast<decltype(out)>(ptr); ptr += sizeof(*out) * count; };
 #ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
-		allocate(m_guard_pages, num_nodes * 2 + 2 + 1);
+		allocate(m_guard_pages, num_guard_pages(num_nodes) + 1);
 #endif
 		allocate(m_caches, num_nodes * NODE_MAX_PLANES);
 		allocate(m_nodes, num_nodes);
