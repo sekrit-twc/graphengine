@@ -401,12 +401,14 @@ public:
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned) const noexcept override
 	{
+		unsigned uninitialized_first_row = first_row;
+
 		if (m_filter_desc->flags.stateful || m_filter_desc->flags.entire_col)
-			first_row = 0;
+			uninitialized_first_row = 0;
 		if (m_filter_desc->flags.entire_row || m_filter_desc->flags.entire_col)
 			sim->set_no_tiling();
 
-		unsigned cursor = sim->cursor(id(), first_row);
+		unsigned cursor = sim->cursor(id(), uninitialized_first_row);
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
 			if (!sim->is_live(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row) &&
 				first_row < sim->cursor_min(id()))
