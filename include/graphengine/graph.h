@@ -5,11 +5,6 @@
 #include "graphengine/namespace.h"
 #include "graphengine/types.h"
 
-struct graphengine_graph {
-protected:
-	~graphengine_graph() = default;
-};
-
 namespace graphengine {
 
 class Filter;
@@ -22,7 +17,7 @@ class Filter;
  * between nodes and invokes filters in the appropriate order. Graphs are
  * insert-only: nodes can not be queried or removed.
  */
-class Graph : public graphengine_graph {
+class Graph {
 public:
 	/**
 	 * Endpoint node callback.
