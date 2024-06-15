@@ -48,7 +48,7 @@ TEST(GraphAndNodeTest, test_simple)
 TEST(GraphAndNodeTest, test_multiple_refs)
 {
 	run_test({
-		{ "source",  "Source", {}, { 640, 480, 1, 1 } },
+		{ "source",  "Source", {}, { 640, 480 } },
 		{ "point.0", "Point",  { { "source" } } },
 		{ "point.1", "Point",  { { "point.0" } } },
 		{ "point.2", "Point",  { { "point.1" } } },
@@ -98,6 +98,20 @@ TEST(GraphAndNodeTest, test_unresize_like)
 		{ "unresize.v",  "WholePlane", { { "unresize.h" } }, { 320, 240 } },
 		{ "postprocess", "Point",      { { "unresize.v" } } },
 		{ "clip",        "Sink",       { { "postprocess" } } },
+	});
+}
+
+TEST(GraphAndNodeTest, test_blocked_in_place)
+{
+	run_test({
+		{ "source",     "Source",     {}, { 640, 480, 1, 3, 0, 0 } },
+		{ "resizeh.0",  "ScaleH",     { { "source", 0 } }, { 320, 4 } },
+		{ "resizeh.1",  "ScaleH",     { { "source", 1 } }, { 320, 4 } },
+		{ "resizeh.2",  "ScaleH",     { { "source", 2 } }, { 320, 4 } },
+		{ "colorspace", "Colorspace", { { "resizeh.0" }, { "resizeh.1"}, { "resizeh.2"} } },
+		{ "resizev.1",  "ScaleV",     { { "colorspace", 1 } }, { 240, 4 } },
+		{ "resizev.2",  "ScaleV",     { { "colorspace", 2 } }, { 240, 4 } },
+		{ "clip",       "Sink",       { { "colorspace", 0}, { "resizev.1" }, { "resizev.2" } } },
 	});
 }
 

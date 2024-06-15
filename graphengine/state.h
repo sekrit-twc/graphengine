@@ -29,6 +29,7 @@ class Simulation {
 		size_t context_size;
 		unsigned cursor;
 		unsigned cursor_min;
+		unsigned cursor_head;
 		unsigned live_range;
 		bool cursor_valid;
 	};
@@ -56,7 +57,7 @@ public:
 	{
 		const node_state &state = m_node_state[id];
 		const node_state &cache_state = m_node_state[cache_id];
-		return state.cursor_valid && row >= state.cursor - cache_state.live_range;
+		return state.cursor_valid && row < state.cursor && row >= cache_state.cursor_head - cache_state.live_range;
 	}
 
 	bool is_live_node(node_id id) const { return m_node_state[id].cursor_valid; }
@@ -100,9 +101,9 @@ public:
 
 	void update_live_range(node_id id, node_id cache_id, unsigned first, unsigned last)
 	{
-		node_state &state = m_node_state[id];
 		node_state &cache_state = m_node_state[cache_id];
-		cache_state.live_range = std::max(cache_state.live_range, std::max(state.cursor, last) - first);
+		cache_state.cursor_head = std::max(cache_state.cursor_head, last);
+		cache_state.live_range = std::max(cache_state.live_range, cache_state.cursor_head - first);
 	}
 
 	void update_step(unsigned step) { m_step = std::max(m_step, step); }

@@ -161,6 +161,7 @@ public:
 
 class ScaleVFilter : public ValidationFilter {
 	unsigned m_src_height;
+	unsigned m_support;
 public:
 	static std::unique_ptr<ScaleVFilter> create(const char *name, const PlaneDescriptor &source_format, const std::vector<unsigned> &args)
 	{
@@ -168,12 +169,14 @@ public:
 			throw std::invalid_argument{ "bad script" };
 
 		unsigned n = args[0];
-		return std::make_unique<ScaleVFilter>(name, source_format, n);
+		unsigned support = args.size() >= 2 ? args[1] : 2;
+		return std::make_unique<ScaleVFilter>(name, source_format, n, support);
 	}
 
-	ScaleVFilter(const char *name, const PlaneDescriptor &source_format, unsigned height) :
+	ScaleVFilter(const char *name, const PlaneDescriptor &source_format, unsigned height, unsigned support) :
 		ValidationFilter{ name },
-		m_src_height{ source_format.height }
+		m_src_height{ source_format.height },
+		m_support{ support }
 	{
 		desc.format = source_format;
 		desc.format.height = height;
@@ -189,7 +192,7 @@ public:
 		double coord = i * ratio;
 
 		unsigned top = std::lrint(std::floor(coord));
-		unsigned bot = std::min(top + 2, m_src_height);
+		unsigned bot = std::min(top + m_support, m_src_height);
 		return{ top, bot };
 	}
 
@@ -199,6 +202,7 @@ public:
 
 class ScaleHFilter : public ValidationFilter {
 	unsigned m_src_width;
+	unsigned m_blocking;
 public:
 	static std::unique_ptr<ScaleHFilter> create(const char *name, const PlaneDescriptor &source_format, const std::vector<unsigned> &args)
 	{
@@ -206,26 +210,28 @@ public:
 			throw std::invalid_argument{ "bad script" };
 
 		unsigned n = args[0];
-		return std::make_unique<ScaleHFilter>(name, source_format, n);
+		unsigned blocking = args.size() >= 2 ? args[1] : 4;
+		return std::make_unique<ScaleHFilter>(name, source_format, n, blocking);
 	}
 
 
-	ScaleHFilter(const char *name, const PlaneDescriptor &source_format, unsigned width) :
+	ScaleHFilter(const char *name, const PlaneDescriptor &source_format, unsigned width, unsigned blocking) :
 		ValidationFilter{ name },
-		m_src_width{ source_format.width }
+		m_src_width{ source_format.width },
+		m_blocking{ blocking }
 	{
 		desc.format = source_format;
 		desc.format.width = width;
 
 		desc.num_deps = 1;
 		desc.num_planes = 1;
-		desc.step = 4;
+		desc.step = m_blocking;
 	}
 
 	pair_unsigned get_row_deps(unsigned i) const noexcept
 	{
-		unsigned i_mod4 = i & ~3U;
-		return{ i_mod4, std::min(i_mod4 + 4, desc.format.height) };
+		unsigned top = i - i % m_blocking;
+		return{ top, std::min(top + m_blocking, desc.format.height) };
 	}
 
 	pair_unsigned get_col_deps(unsigned left, unsigned right) const noexcept
