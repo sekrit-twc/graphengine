@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <climits>
+#include <cstdint>
 #include <cstring>
 #include <exception>
 #include <limits>
