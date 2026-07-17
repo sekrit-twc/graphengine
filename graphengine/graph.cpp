@@ -687,27 +687,31 @@ public:
 				resolved_deps[p].first->add_ref(resolved_deps[p].second);
 			}
 
-			std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
-			node_id id = node->id();
-			add_node(std::move(node));
-			m_sink_id = id;
+			try {
+				std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
+				node_id id = node->id();
+				add_node(std::move(node));
+				m_sink_id = id;
 
-			// Compilation is irreversible. Run any steps that could fail upfront.
-			sim = begin_compile(num_planes);
+				// Compilation is irreversible. Run any steps that could fail upfront.
+				sim = begin_compile(num_planes);
+			} catch (...) {
+				// Delete invalid simulation results.
+				for (unsigned p = 0; p < num_planes; ++p) {
+					m_planar_simulation_result[p].reset();
+				}
+				m_simulation_result.reset();
+
+				// Unreference the output nodes.
+				for (unsigned p = 0; p < num_planes; ++p) {
+					resolved_deps[p].first->dec_ref(resolved_deps[p].second);
+					if (resolved_deps[p] != original_resolved_deps[p])
+						original_resolved_deps[p].first->dec_ref(original_resolved_deps[p].second);
+				}
+
+				throw;
+			}
 		} catch (...) {
-			// Delete invalid simulation results.
-			for (unsigned p = 0; p < num_planes; ++p) {
-				m_planar_simulation_result[p].reset();
-			}
-			m_simulation_result.reset();
-
-			// Unreference the output nodes.
-			for (unsigned p = 0; p < num_planes; ++p) {
-				resolved_deps[p].first->dec_ref(resolved_deps[p].second);
-				if (resolved_deps[p] != original_resolved_deps[p])
-					original_resolved_deps[p].first->dec_ref(original_resolved_deps[p].second);
-			}
-
 			// Remove inserted copy and sink nodes.
 			m_nodes.resize(original_node_count);
 			m_sink_id = null_node;
