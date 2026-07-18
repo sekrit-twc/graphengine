@@ -456,7 +456,7 @@ public:
 			size_t inner_rowsize = static_cast<size_t>(plane_desc[p].width) * plane_desc[p].bytes_per_sample;
 			inner_rowsize = (inner_rowsize + 63) & ~static_cast<size_t>(63);
 
-			size_t buffer_size = rowsize * (plane_desc[p].height + GUARD_COLS * 2);
+			size_t buffer_size = rowsize * (plane_desc[p].height + GUARD_ROWS * 2);
 			size_t pixel_offset = rowsize * GUARD_ROWS + GUARD_COLS * plane_desc[p].bytes_per_sample;
 
 
