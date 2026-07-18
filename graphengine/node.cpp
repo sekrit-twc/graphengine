@@ -244,22 +244,22 @@ public:
 		for (; cursor < last_row; cursor += m_step) {
 			switch (m_num_planes) {
 			case 4:
-				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
-				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], 1);
-				m_parents[2].first->process(state, (cursor + m_step) >> m_subsample_h[2], 2);
-				m_parents[3].first->process(state, (cursor + m_step) >> m_subsample_h[3], 3);
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], m_parents[0].second);
+				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], m_parents[1].second);
+				m_parents[2].first->process(state, (cursor + m_step) >> m_subsample_h[2], m_parents[2].second);
+				m_parents[3].first->process(state, (cursor + m_step) >> m_subsample_h[3], m_parents[3].second);
 				break;
 			case 3:
-				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
-				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], 1);
-				m_parents[2].first->process(state, (cursor + m_step) >> m_subsample_h[2], 2);
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], m_parents[0].second);
+				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], m_parents[1].second);
+				m_parents[2].first->process(state, (cursor + m_step) >> m_subsample_h[2], m_parents[2].second);
 				break;
 			case 2:
-				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
-				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], 1);
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], m_parents[0].second);
+				m_parents[1].first->process(state, (cursor + m_step) >> m_subsample_h[1], m_parents[1].second);
 				break;
 			case 1:
-				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], 0);
+				m_parents[0].first->process(state, (cursor + m_step) >> m_subsample_h[0], m_parents[0].second);
 				break;
 			default:
 				break;
