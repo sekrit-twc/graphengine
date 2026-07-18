@@ -324,6 +324,13 @@ class GraphImpl::impl {
 		result.step = sim.step();
 		result.no_tiling = sim.no_tiling();
 
+		auto increment_tmp_size = [&](size_t sz)
+		{
+			if (result.tmp_size + sz < result.tmp_size)
+				throw Exception{ Exception::OUT_OF_MEMORY, "graph working set too large" };
+			result.tmp_size += sz;
+		};
+
 		for (const auto &node : m_nodes) {
 			node_id id = node->id();
 			SimulationResult::node_result &node_result = result.nodes[id];
@@ -357,16 +364,16 @@ class GraphImpl::impl {
 					size_t rowsize = (static_cast<size_t>(desc.width) * desc.bytes_per_sample + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
 					node_result.cache_size_bytes[p] = static_cast<size_t>(buffer_lines) * rowsize;
 					node_result.cache_stride[p] = rowsize;
-					result.tmp_size += node_result.cache_size_bytes[p];
+					increment_tmp_size(node_result.cache_size_bytes[p]);
 				}
 				node_result.cache_mask[p] = mask;
 			}
 
 			node_result.context_size = (sim.context_size(id) + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
 			node_result.initial_cursor = sim.cursor_min(id);
-			result.tmp_size += node_result.context_size;
+			increment_tmp_size(node_result.context_size);
 		}
-		result.tmp_size += sim.scratchpad_size();
+		increment_tmp_size(sim.scratchpad_size());
 		result.scratchpad_size = sim.scratchpad_size();
 
 		// Cache footprint also includes the endpoints.
