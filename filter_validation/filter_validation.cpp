@@ -696,6 +696,7 @@ class FilterValidation::impl {
 			EXPECT_LE(cur.first, cur.second) << i;
 			EXPECT_GE(cur.first, prev.first) << i;
 			EXPECT_GE(cur.second, prev.second) << i;
+			EXPECT_LE(cur.second, m_dep_format[0].height);
 			throw_if_failed();
 		}
 

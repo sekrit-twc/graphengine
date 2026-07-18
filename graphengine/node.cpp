@@ -87,6 +87,9 @@ public:
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned plane) const noexcept override
 	{
+		assert(first_row <= last_row);
+		assert(last_row <= m_desc[plane].height);
+
 		// Normalize row addresses.
 		first_row <<= m_subsample_h[plane];
 		first_row = first_row - first_row % m_step;
@@ -401,6 +404,9 @@ public:
 
 	void trace_access_pattern(Simulation *sim, unsigned first_row, unsigned last_row, unsigned) const noexcept override
 	{
+		assert(first_row <= last_row);
+		assert(last_row <= m_filter_desc->format.height);
+
 		unsigned uninitialized_first_row = first_row;
 
 		if (m_filter_desc->flags.stateful || m_filter_desc->flags.entire_col)

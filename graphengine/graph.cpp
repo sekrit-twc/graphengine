@@ -271,6 +271,8 @@ class GraphImpl::impl {
 			throw Exception{ Exception::INVALID_DESCRIPTOR, "filter must have non-zero plane count" };
 		if (desc.num_planes > FILTER_MAX_PLANES)
 			throw Exception{ Exception::INVALID_DESCRIPTOR, "maximum number of filter outputs exceeded" };
+		if (!desc.step)
+			throw Exception{ Exception::INVALID_DESCRIPTOR, "filter step must be positive" };
 
 		validate_plane_desc(desc.format);
 
