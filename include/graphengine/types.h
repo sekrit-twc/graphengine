@@ -84,6 +84,7 @@ struct Exception {
 		INVALID_DESCRIPTOR = 5,
 		INVALID_DIMENSIONS = 6,
 		INVALID_NODE = 7,
+		GRAPH_FAILED = 8,
 	};
 
 	int code;        /**< Error code, see above. */

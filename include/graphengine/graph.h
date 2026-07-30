@@ -116,6 +116,10 @@ public:
 	 * subsampled by a power-of-2. Defining a sink finalizes the graph, and no
 	 * additional nodes may be created.
 	 *
+	 * If an error is thrown with reason {@p Exception::GRAPH_FAILED}, the
+	 * internal state of the graph is invalid, and no further operations can
+	 * be performed on the graph.
+	 *
 	 * @param num_planes number of output planes
 	 * @param[in] deps output plane handles
 	 * @return node id
@@ -171,7 +175,7 @@ public:
 	 *
 	 * @param[in] endpoints input/output buffers and callbacks
 	 * @param[out] tmp working memory
-	 * @throw Exception on callback error
+	 * @throw Exception on callback error or sink not defined
 	 * @see get_tmp_size()
 	 */
 	virtual void run(const Endpoint endpoints[], void *tmp) const = 0;
