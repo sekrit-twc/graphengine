@@ -98,7 +98,7 @@ public:
 		last_row = last_row % m_step ? last_row + (m_step - last_row % m_step) : last_row;
 
 		sim->update_cursor_range(id(), first_row, last_row);
-		sim->update_live_range(id(), id(), first_row, last_row);
+		sim->update_live_range(id(), first_row, last_row);
 	}
 
 	void begin_frame(FrameState *state, unsigned left, unsigned right, unsigned plane) const noexcept override
@@ -218,7 +218,7 @@ public:
 			}
 		}
 		sim->update_cursor_range(id(), first_row, cursor);
-		sim->update_live_range(id(), id(), first_row, cursor);
+		sim->update_live_range(id(), first_row, cursor);
 	}
 
 	void begin_frame(FrameState *state, unsigned left, unsigned right, unsigned plane) const noexcept override
@@ -416,7 +416,9 @@ public:
 
 		unsigned cursor = sim->cursor(id(), uninitialized_first_row);
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			if (!sim->is_live(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row) &&
+			node_dep_desc cache_dep = FrameState::cache_descriptor_offset_to_dep(cache_location(p));
+
+			if (!sim->is_live(id(), cache_dep.id, first_row, cache_dep.plane) &&
 				first_row < sim->cursor_min(id()))
 			{
 				cursor = first_row;
@@ -434,7 +436,8 @@ public:
 
 		sim->update_cursor_range(id(), first_row, cursor);
 		for (unsigned p = 0; p < m_filter_desc->num_planes; ++p) {
-			sim->update_live_range(id(), FrameState::cache_descriptor_offset_to_node(cache_location(p)), first_row, cursor);
+			node_dep_desc cache_dep = FrameState::cache_descriptor_offset_to_dep(cache_location(p));
+			sim->update_live_range(cache_dep.id, first_row, cursor, cache_dep.plane);
 		}
 	}
 

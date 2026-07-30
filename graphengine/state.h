@@ -36,12 +36,14 @@ class Simulation {
 
 	std::vector<node_state> m_node_state;
 	size_t m_scratchpad_size;
+	const Node *m_sink;
 	unsigned m_step;
 	bool m_no_tiling;
 public:
-	explicit Simulation(size_t num_nodes) :
+	explicit Simulation(size_t num_nodes, const Node *sink) :
 		m_node_state(num_nodes),
 		m_scratchpad_size{},
+		m_sink{ sink },
 		m_step{ 1 },
 		m_no_tiling{}
 	{}
@@ -53,10 +55,14 @@ public:
 		m_step = 1;
 	}
 
-	bool is_live(node_id id, node_id cache_id, unsigned row) const
+	bool is_live(node_id id, node_id cache_id, unsigned row, unsigned plane = 0) const
 	{
 		const node_state &state = m_node_state[id];
 		const node_state &cache_state = m_node_state[cache_id];
+
+		if (cache_id == m_sink->id())
+			row <<= m_sink->subsample_h(plane);
+
 		return state.cursor_valid && row < state.cursor && row >= cache_state.cursor_head - cache_state.live_range;
 	}
 
@@ -99,9 +105,15 @@ public:
 		s.cursor_min = std::min(s.cursor_min, first);
 	}
 
-	void update_live_range(node_id id, node_id cache_id, unsigned first, unsigned last)
+	void update_live_range(node_id cache_id, unsigned first, unsigned last, unsigned plane = 0)
 	{
 		node_state &cache_state = m_node_state[cache_id];
+
+		if (cache_id == m_sink->id()) {
+			first <<= m_sink->subsample_h(plane);
+			last <<= m_sink->subsample_h(plane);
+		}
+
 		cache_state.cursor_head = std::max(cache_state.cursor_head, last);
 		cache_state.live_range = std::max(cache_state.live_range, cache_state.cursor_head - first);
 	}
@@ -171,9 +183,11 @@ public:
 		return static_cast<size_t>(id) * NODE_MAX_PLANES + plane;
 	}
 
-	static node_id cache_descriptor_offset_to_node(ptrdiff_t offset)
+	static node_dep_desc cache_descriptor_offset_to_dep(ptrdiff_t offset)
 	{
-		return static_cast<node_id>(static_cast<size_t>(offset) / NODE_MAX_PLANES);
+		node_id id = static_cast<node_id>(static_cast<size_t>(offset) / NODE_MAX_PLANES);
+		unsigned plane = static_cast<unsigned>(static_cast<size_t>(offset) % NODE_MAX_PLANES);
+		return{ id, plane };
 	}
 
 	// Initialize metadata section.

@@ -299,20 +299,15 @@ class GraphImpl::impl {
 
 	void trace_interleaved(Simulation *sim, const Node *sink) noexcept
 	{
+		for (unsigned p = 0; p < sink->num_planes(); ++p) {
+			sim->update_step(1U << sink->subsample_h(p));
+		}
+
 		// Lookup the per-filter memory requirements.
 		sink->trace_working_memory(sim);
 
-		// Calculate the subsampling factor.
-		unsigned sink_planes = sink->num_planes();
-		unsigned height = 0;
-		for (unsigned p = 0; p < sink_planes; ++p) {
-			height = std::max(height, sink->format(p).height);
-		}
-		for (unsigned p = 0; p < sink_planes; ++p) {
-			sim->update_step(height / sink->format(p).height);
-		}
-
 		// Trace the scanline dependency pattern.
+		unsigned height = sink->format(0).height;
 		for (unsigned i = 0; i < height; i += sim->step()) {
 			unsigned next = height - i < sim->step() ? height : i + sim->step();
 			sink->trace_access_pattern(sim, i, next, 0);
@@ -705,14 +700,14 @@ public:
 			}
 
 			try {
-				std::unique_ptr<Node> node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
-				node_id id = node->id();
-				add_node(std::move(node));
+				std::unique_ptr<Node> sink_node = make_sink_node(next_node_id(), num_planes, resolved_deps.data());
+				node_id id = sink_node->id();
+				add_node(std::move(sink_node));
 				m_sink_id = id;
 
 				// Compilation is irreversible. Run any steps that could fail upfront.
 				m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
-				sim = std::make_unique<Simulation>(m_nodes.size());
+				sim = std::make_unique<Simulation>(m_nodes.size(), node(m_sink_id));
 			} catch (...) {
 				// Delete invalid simulation results.
 				m_simulation_result.reset();
