@@ -297,13 +297,29 @@ class GraphImpl::impl {
 		return id;
 	}
 
-	std::unique_ptr<Simulation> begin_compile(unsigned num_planes)
+	void trace_interleaved(Simulation *sim, const Node *sink) noexcept
 	{
-		m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
-		return std::make_unique<Simulation>(m_nodes.size());
+		// Lookup the per-filter memory requirements.
+		sink->trace_working_memory(sim);
+
+		// Calculate the subsampling factor.
+		unsigned sink_planes = sink->num_planes();
+		unsigned height = 0;
+		for (unsigned p = 0; p < sink_planes; ++p) {
+			height = std::max(height, sink->format(p).height);
+		}
+		for (unsigned p = 0; p < sink_planes; ++p) {
+			sim->update_step(height / sink->format(p).height);
+		}
+
+		// Trace the scanline dependency pattern.
+		for (unsigned i = 0; i < height; i += sim->step()) {
+			unsigned next = height - i < sim->step() ? height : i + sim->step();
+			sink->trace_access_pattern(sim, i, next, 0);
+		}
 	}
 
-	void compile_plane(Simulation *sim, const node_dep &dep) noexcept
+	void trace_planar(Simulation *sim, const node_dep &dep) noexcept
 	{
 		Node *node = dep.first;
 		unsigned plane = dep.second;
@@ -398,7 +414,7 @@ class GraphImpl::impl {
 		result.cache_footprint += node_footprint(m_sink_id);
 	}
 
-	void compile(Simulation *sim, unsigned num_planes, node_dep deps[]) noexcept
+	void compile(Simulation *sim, unsigned num_planes, const node_dep deps[])
 	{
 		assert(m_simulation_result);
 
@@ -416,26 +432,8 @@ class GraphImpl::impl {
 			sink->apply_node_fusion();
 		}
 
-		// Lookup the per-filter memory requirements.
-		sink->trace_working_memory(sim);
-
-		// Calculate the subsampling factor.
-		unsigned sink_planes = sink->num_planes();
-		unsigned height = 0;
-		for (unsigned p = 0; p < sink_planes; ++p) {
-			height = std::max(height, sink->format(p).height);
-		}
-		for (unsigned p = 0; p < sink_planes; ++p) {
-			sim->update_step(height / sink->format(p).height);
-		}
-
-		// Trace the scanline dependency pattern.
-		for (unsigned i = 0; i < height; i += sim->step()) {
-			unsigned next = height - i < sim->step() ? height : i + sim->step();
-			sink->trace_access_pattern(sim, i, next, 0);
-		}
-
-		compile_simulation_result(*m_simulation_result, *sim, false);
+		trace_interleaved(sim, sink);
+		compile_simulation_result(*m_simulation_result, *sim, false); // Can throw.
 
 		// Determine if the graph can be traversed in planar order.
 		bool endpoint_visited[(GRAPH_MAX_ENDPOINTS - 1) * NODE_MAX_PLANES] = {};
@@ -462,12 +460,21 @@ class GraphImpl::impl {
 		if (!planar_compatible)
 			return;
 
-		for (unsigned p = 0; p < num_planes; ++p) {
-			sim->reset();
-			compile_plane(sim, deps[p]);
-			m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
-			compile_simulation_result(*m_planar_simulation_result[p], *sim, true);
-			m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
+		try {
+			for (unsigned p = 0; p < num_planes; ++p) {
+				m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
+
+				sim->reset();
+				trace_planar(sim, deps[p]);
+				compile_simulation_result(*m_planar_simulation_result[p], *sim, true); // Can throw.
+				m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
+			}
+		} catch (...) {
+			// Disable planar execution.
+			for (unsigned p = 0; p < num_planes; ++p) {
+				m_planar_simulation_result[p].reset();
+				m_planar_deps[p] = null_dep;
+			}
 		}
 	}
 
@@ -675,6 +682,7 @@ public:
 		auto resolved_deps = original_resolved_deps;
 		std::unique_ptr<Simulation> sim;
 
+		// Reversible steps. If an exception occurs here, the graph is still valid.
 		try {
 			for (unsigned p = 0; p < num_planes; ++p) {
 				bool duplicate = std::find(resolved_deps.begin(), resolved_deps.begin() + p, resolved_deps[p]) != resolved_deps.begin() + p;
@@ -703,12 +711,10 @@ public:
 				m_sink_id = id;
 
 				// Compilation is irreversible. Run any steps that could fail upfront.
-				sim = begin_compile(num_planes);
+				m_simulation_result = std::make_unique<SimulationResult>(m_nodes.size());
+				sim = std::make_unique<Simulation>(m_nodes.size());
 			} catch (...) {
 				// Delete invalid simulation results.
-				for (unsigned p = 0; p < num_planes; ++p) {
-					m_planar_simulation_result[p].reset();
-				}
 				m_simulation_result.reset();
 
 				// Unreference the output nodes.
@@ -732,6 +738,7 @@ public:
 			throw;
 		}
 
+		// Irreversible step. If an exception occurs here, the graph is invalid.
 		compile(sim.get(), num_planes, resolved_deps.data());
 		return m_sink_id;
 	}
