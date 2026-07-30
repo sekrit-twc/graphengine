@@ -236,11 +236,13 @@ public:
 	 * the ids used by the main graph. Source mappings need not be provided for
 	 * source planes that are defined but not referenced.
 	 *
+	 * If an exception occurs, the main graph is in an indeterminate state.
+	 *
 	 * @param[out] graph graph
 	 * @param num_sources number of source mappings provided
 	 * @param[in] sources array of source mappings
 	 * @param[out] sinks array of sink mappings
-	 * @throw Exception on preconditions violated
+	 * @throw Exception on preconditions violated or internal error
 	 */
 	virtual void connect(Graph *graph, size_t num_sources, const Mapping sources[], Mapping sinks[]) const = 0;
 };
