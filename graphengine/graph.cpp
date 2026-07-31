@@ -333,7 +333,7 @@ class GraphImpl::impl {
 		}
 	}
 
-	void compile_simulation_result(SimulationResult &result, const Simulation &sim, bool skip_endpoints) noexcept
+	void compile_simulation_result(SimulationResult &result, const Simulation &sim, node_id output_id, unsigned output_sink_plane) noexcept
 	{
 		assert(result.nodes.size() == m_nodes.size());
 
@@ -351,8 +351,6 @@ class GraphImpl::impl {
 
 			if (!sim.is_live_node(id))
 				continue;
-			if (skip_endpoints && node->sourcesink())
-				continue;
 
 			unsigned live_rows = sim.live_range(id);
 			if (!live_rows)
@@ -361,7 +359,7 @@ class GraphImpl::impl {
 			for (unsigned p = 0; p < node->num_planes(); ++p) {
 				PlaneDescriptor desc = node->format(p);
 				unsigned subsample_h = node->subsample_h(p);
-				if (id != m_sink_id)
+				if (output_id == m_sink_id)
 					assert(live_rows % (1U << subsample_h) == 0);
 
 				unsigned mask = BUFFER_MAX;
@@ -394,25 +392,39 @@ class GraphImpl::impl {
 		result.scratchpad_size = sim.scratchpad_size();
 
 		// Cache footprint also includes the endpoints.
-		const auto node_footprint = [&](node_id id)
-		{
-			const auto &node = m_nodes[id];
-			size_t footprint = 0;
+		result.cache_footprint = result.tmp_size;
 
-			for (unsigned p = 0; p < node->num_planes(); ++p) {
-				PlaneDescriptor desc = node->format(p);
-				unsigned mask = result.nodes[id].cache_mask[p];
-				size_t rowsize = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
-				footprint += rowsize * (mask == BUFFER_MAX ? desc.height : mask + 1);
-			}
-			return footprint;
+		const auto footprint = [&](node_id id, unsigned plane)
+		{
+			PlaneDescriptor desc = m_nodes[id]->format(plane);
+			unsigned mask = result.nodes[id].cache_mask[plane];
+			size_t rowsize = static_cast<size_t>(desc.width) * desc.bytes_per_sample;
+			return rowsize * (mask == BUFFER_MAX ? desc.height : mask + 1);
 		};
 
-		result.cache_footprint = result.tmp_size;
-		for (node_id id : m_source_ids) {
-			sat_add(result.cache_footprint, node_footprint(id));
+		// Consider reachability analysis when compiling for planar.
+		if (output_id != m_sink_id) {
+			const Node *output_node = m_nodes[output_id].get();
+
+			for (node_id id : m_source_ids) {
+				for (unsigned p = 0; p < m_nodes[id]->num_planes(); ++p) {
+					if (!output_node->reachable(id, p))
+						continue;
+
+					sat_add(result.cache_footprint, footprint(id, p));
+				}
+			}
+			sat_add(result.cache_footprint, footprint(m_sink_id, output_sink_plane));
+		} else {
+			for (node_id id : m_source_ids) {
+				for (unsigned p = 0; p < m_nodes[id]->num_planes(); ++p) {
+					sat_add(result.cache_footprint, footprint(id, p));
+				}
+			}
+			for (unsigned p = 0; p < m_nodes[m_sink_id]->num_planes(); ++p) {
+				sat_add(result.cache_footprint, footprint(m_sink_id, p));
+			}
 		}
-		sat_add(result.cache_footprint, node_footprint(m_sink_id));
 
 		// Check if there is enough space left for overhead.
 #ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
@@ -447,7 +459,7 @@ class GraphImpl::impl {
 		}
 
 		trace_interleaved(sim, sink);
-		compile_simulation_result(*m_simulation_result, *sim, false);
+		compile_simulation_result(*m_simulation_result, *sim, m_sink_id, 0);
 		if (!m_simulation_result->ok())
 			return;
 
@@ -485,7 +497,7 @@ class GraphImpl::impl {
 
 			sim->reset();
 			trace_planar(sim, deps[p]);
-			compile_simulation_result(*m_planar_simulation_result[p], *sim, true);
+			compile_simulation_result(*m_planar_simulation_result[p], *sim, deps[p].first->id(), deps[p].second);
 			m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
 
 			// Planar execution is a subset of interleaved, so it can not fail.
