@@ -410,6 +410,19 @@ class GraphImpl::impl {
 			sat_add(result.cache_footprint, node_footprint(id));
 		}
 		sat_add(result.cache_footprint, node_footprint(m_sink_id));
+
+		// Check if there is enough space left for overhead.
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+		size_t guard_page_size = FrameState::num_guard_pages(m_nodes.size()) * FrameState::guard_page_size();
+#else
+		size_t guard_page_size = 0;
+#endif
+		size_t metadata_overhead = FrameState::metadata_size(m_nodes.size());
+
+		if (SIZE_MAX - result.tmp_size < guard_page_size + metadata_overhead)
+			result.tmp_size = SIZE_MAX;
+		if (SIZE_MAX - result.cache_footprint < metadata_overhead)
+			result.cache_footprint = SIZE_MAX;
 	}
 
 	void compile(Simulation *sim, unsigned num_planes, const node_dep deps[]) noexcept
