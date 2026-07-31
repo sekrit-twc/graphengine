@@ -354,10 +354,13 @@ class GraphImpl::impl {
 			if (skip_endpoints && node->sourcesink())
 				continue;
 
+			unsigned live_rows = sim.live_range(id);
+			if (!live_rows)
+				continue;
+
 			for (unsigned p = 0; p < node->num_planes(); ++p) {
 				PlaneDescriptor desc = node->format(p);
 				unsigned subsample_h = node->subsample_h(p);
-				unsigned live_rows = sim.live_range(id);
 				if (id != m_sink_id)
 					assert(live_rows % (1U << subsample_h) == 0);
 
