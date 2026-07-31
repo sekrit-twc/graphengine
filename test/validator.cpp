@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -604,7 +605,11 @@ public:
 	const std::unordered_map<node_id, std::vector<PlaneDescriptor>> &endpoints() const { return m_endpoints; }
 };
 
-GraphValidator::GraphValidator()
+GraphValidator::GraphValidator() :
+	m_cache_footprint{ SIZE_MAX },
+	m_cache_footprint_planar{ SIZE_MAX },
+	m_tmp_size{ SIZE_MAX },
+	m_tmp_size_planar{ SIZE_MAX }
 {
 	m_factories[POINT_FILTER] = PointFilter::create;
 	m_factories[CONVOLUTION_FILTER] = ConvolutionFilter::create;
@@ -622,18 +627,45 @@ void GraphValidator::register_factory(const char *filter_name, filter_factory fu
 	m_factories[filter_name] = func;
 }
 
+void GraphValidator::expect_cache_footprint_lt(size_t sz)
+{
+	m_cache_footprint = sz;
+}
+
+void GraphValidator::expect_cache_footprint_planar_lt(size_t sz)
+{
+	m_cache_footprint_planar = sz;
+}
+
+void GraphValidator::expect_tmp_size_lt(size_t sz)
+{
+	m_tmp_size = sz;
+}
+
+void GraphValidator::expect_tmp_size_planar_lt(size_t sz)
+{
+	m_tmp_size_planar = sz;
+}
+
+void GraphValidator::expect_buffering_requirement_eq(const unsigned mask[], size_t count)
+{
+	m_buffering.assign(mask, mask + count);
+}
+
 void GraphValidator::validate(const ScriptStatement *statements, size_t num_statements)
 {
-	auto do_validate = [&](auto hooks)
+	auto null_hook = [](auto) {};
+	auto do_validate = [&](auto pre_hooks, auto post_hooks)
 	{
 		std::vector<std::unique_ptr<ValidationFilter>> filters;
 		graphengine::GraphImpl graph;
-		hooks(&graph);
 
+		pre_hooks(&graph);
 		Script script{ &m_factories, &filters, &graph };
 		for (size_t i = 0; i < num_statements; ++i) {
 			script.eval(statements[i]);
 		}
+		post_hooks(&graph);
 
 		std::shared_ptr<void> tmp{ _aligned_malloc(graph.get_tmp_size(), 64), _aligned_free };
 
@@ -645,12 +677,30 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 	};
 
 	{
+		SCOPED_TRACE("buffering check");
+		do_validate(null_hook, [=](graphengine::Graph *graph)
+		{
+			EXPECT_LE(graph->get_cache_footprint(true), m_cache_footprint);
+			EXPECT_LE(graph->get_cache_footprint(false), m_cache_footprint_planar);
+			EXPECT_LE(graph->get_tmp_size(true), m_tmp_size);
+			EXPECT_LE(graph->get_tmp_size(false), m_tmp_size_planar);
+
+			if (!m_buffering.empty()) {
+				graphengine::Graph::BufferingRequirement req = graph->get_buffering_requirement();
+				for (size_t i = 0; i < m_buffering.size(); ++i) {
+					EXPECT_EQ(m_buffering[i], req[i].mask);
+				}
+			}
+		});
+	}
+
+	{
 		SCOPED_TRACE("nonplanar+untiled");
 		do_validate([](graphengine::Graph *graph)
 		{
 			graphengine::GraphImpl::from(graph)->set_planar_enabled(false);
 			graphengine::GraphImpl::from(graph)->set_tiling_enabled(false);
-		});
+		}, null_hook);
 	}
 
 	{
@@ -660,7 +710,7 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 			graphengine::GraphImpl::from(graph)->set_planar_enabled(false);
 			graphengine::GraphImpl::from(graph)->set_tiling_enabled(true);
 			graphengine::GraphImpl::from(graph)->set_tile_width(128);
-		});
+		}, null_hook);
 	}
 
 	{
@@ -669,7 +719,7 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		{
 			graphengine::GraphImpl::from(graph)->set_planar_enabled(true);
 			graphengine::GraphImpl::from(graph)->set_tiling_enabled(false);
-		});
+		}, null_hook);
 	}
 
 	{
@@ -679,6 +729,6 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 			graphengine::GraphImpl::from(graph)->set_planar_enabled(true);
 			graphengine::GraphImpl::from(graph)->set_tiling_enabled(true);
 			graphengine::GraphImpl::from(graph)->set_tile_width(128);
-		});
+		}, null_hook);
 	}
 }

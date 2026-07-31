@@ -75,10 +75,25 @@ class GraphValidator {
 	> filter_factory;
 
 	std::unordered_map<std::string, filter_factory> m_factories;
+	std::vector<unsigned> m_buffering;
+	size_t m_cache_footprint;
+	size_t m_cache_footprint_planar;
+	size_t m_tmp_size;
+	size_t m_tmp_size_planar;
 public:
 	GraphValidator();
 
 	void register_factory(const char *filter_name, filter_factory func);
+
+	void expect_cache_footprint_lt(size_t sz);
+
+	void expect_cache_footprint_planar_lt(size_t sz);
+
+	void expect_tmp_size_lt(size_t sz);
+
+	void expect_tmp_size_planar_lt(size_t sz);
+
+	void expect_buffering_requirement_eq(const unsigned mask[], size_t count);
 
 	void validate(const ScriptStatement *statements, size_t num_statements);
 };
