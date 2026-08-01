@@ -3,13 +3,15 @@
 #endif // _WIN32
 
 #include <climits>
-#include <cstring>
+#include <memory>
 #include <system_error>
 
 #ifdef _WIN32
+  #include <filesystem>
   #include <Windows.h>
 #else
   #include <cerrno>
+  #include <cstdint>
 
   #include <fcntl.h>
   #include <unistd.h>
@@ -20,8 +22,6 @@
 
 #include "mmap.h"
 
-using std::nullptr_t;
-
 namespace {
 
 #ifdef _WIN32
@@ -31,13 +31,13 @@ class close_handle {
 	struct handle {
 		::HANDLE h = INVALID_HANDLE_VALUE;
 
-		handle(nullptr_t x = nullptr) noexcept {}
+		handle(std::nullptr_t x = nullptr) noexcept {}
 		handle(::HANDLE h) noexcept : h{ h } {}
 
 		operator ::HANDLE() const noexcept { return h; }
 
-		bool operator==(nullptr_t) const noexcept { return h != 0 && h != INVALID_HANDLE_VALUE; }
-		bool operator!=(nullptr_t) const noexcept { return !(*this == nullptr); }
+		bool operator==(std::nullptr_t) const noexcept { return h != 0 && h != INVALID_HANDLE_VALUE; }
+		bool operator!=(std::nullptr_t) const noexcept { return !(*this == nullptr); }
 	};
 public:
 	typedef handle pointer;
@@ -57,22 +57,14 @@ void trap_error(const char *msg = "")
 	throw std::system_error{ code, msg };
 }
 
-void utf8_to_wchar(wchar_t unicode_path[MAX_PATH], const char *path)
-{
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, unicode_path, MAX_PATH * sizeof(wchar_t)) == 0)
-		win32::trap_error("error converting path to UTF-16");
-}
-
 void create_new_file(const char *path, size_t size)
 {
-	wchar_t unicode_path[MAX_PATH] = { 0 };
+	std::filesystem::path wpath = std::filesystem::u8path(path);
 	handle_uptr file_handle_uptr;
 	::HANDLE file_handle;
 	::LARGE_INTEGER file_ptr;
 
-	win32::utf8_to_wchar(unicode_path, path);
-
-	if ((file_handle = ::CreateFileW(unicode_path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)) == INVALID_HANDLE_VALUE)
+	if ((file_handle = ::CreateFileW(wpath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)) == INVALID_HANDLE_VALUE)
 		win32::trap_error("error opening file");
 
 	file_handle_uptr.reset(file_handle);
@@ -94,13 +86,13 @@ class close_fd {
 	struct descriptor {
 		int fd = -1;
 
-		descriptor(nullptr_t x = nullptr) noexcept {}
+		descriptor(std::nullptr_t x = nullptr) noexcept {}
 		descriptor(int fd) noexcept : fd{ fd } {}
 
 		operator int() const noexcept { return fd; }
 
-		bool operator==(nullptr_t) const noexcept { return fd < 0; }
-		bool operator!=(nullptr_t) const noexcept { return !(*this == nullptr); }
+		bool operator==(std::nullptr_t) const noexcept { return fd < 0; }
+		bool operator!=(std::nullptr_t) const noexcept { return !(*this == nullptr); }
 	};
 public:
 	typedef descriptor pointer;
@@ -112,13 +104,13 @@ class munmap_file {
 	struct map_pointer {
 		void *ptr = MAP_FAILED;
 
-		map_pointer(nullptr_t x = nullptr) noexcept {}
+		map_pointer(std::nullptr_t x = nullptr) noexcept {}
 		map_pointer(void *ptr) noexcept : ptr{ ptr } {}
 
 		operator void *() const noexcept { return ptr; }
 
-		bool operator==(nullptr_t) const noexcept { return ptr == MAP_FAILED; }
-		bool operator!=(nullptr_t) const noexcept { return !(*this == nullptr); }
+		bool operator==(std::nullptr_t) const noexcept { return ptr == MAP_FAILED; }
+		bool operator!=(std::nullptr_t) const noexcept { return !(*this == nullptr); }
 	};
 public:
 	typedef map_pointer pointer;
@@ -161,7 +153,8 @@ void create_new_file(const char *path, size_t size)
 
 	if (ftruncate(fd, size) < 0)
 		posix::trap_error("error truncating file");
-	if (close(fd) < 0)
+
+	if (close(fd_uptr.release()) < 0)
 		posix::trap_error("error closing file");
 }
 
@@ -180,18 +173,16 @@ class MemoryMappedFile::impl {
 
 	void map_file(const char *path, DWORD desired_access1, DWORD share_mode, DWORD protect, DWORD desired_access2)
 	{
+		std::filesystem::path wpath = std::filesystem::u8path(path);
 		win32::handle_uptr file_handle_uptr;
 		win32::handle_uptr mapping_handle_uptr;
 
-		wchar_t unicode_path[MAX_PATH] = { 0 };
 		::HANDLE file_handle;
 		::HANDLE mapping_handle;
 		void *map_view;
 		::LARGE_INTEGER file_size;
 
-		win32::utf8_to_wchar(unicode_path, path);
-
-		if ((file_handle = ::CreateFileW(unicode_path, desired_access1, share_mode, nullptr, OPEN_EXISTING, 0, nullptr)) == INVALID_HANDLE_VALUE)
+		if ((file_handle = ::CreateFileW(wpath.c_str(), desired_access1, share_mode, nullptr, OPEN_EXISTING, 0, nullptr)) == INVALID_HANDLE_VALUE)
 			win32::trap_error("error opening file");
 
 		file_handle_uptr.reset(file_handle);
