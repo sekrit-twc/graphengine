@@ -1,39 +1,52 @@
+#include <cstdint>
 #include <vector>
+#include "graphengine/graph.h"
 #include "gtest/gtest.h"
 #include "validator.h"
 
 namespace {
 
-constexpr size_t OVERHEAD = 1024;
+const bool is_debug = graphengine::GraphImpl::debug_mode();
+
+size_t overhead_size(size_t num_nodes)
+{
+#if SIZE_MAX > UINT32_MAX
+	size_t sz = is_debug ? 24 + 133 * num_nodes : 0 + 117 * num_nodes;
+#else
+	size_t sz = is_debug ? 12 + 73 * num_nodes : 0 + 65 * num_nodes;
+#endif
+	return (sz + 63) & ~static_cast<size_t>(63);
+}
 
 struct TestCase {
 	GraphValidator validator;
+	size_t num_nodes = 0;
+
+	explicit TestCase(size_t num_nodes = 8) : num_nodes{ num_nodes } {}
 
 	TestCase &cache_footprint(size_t sz)
 	{
-		validator.expect_cache_footprint_lt(sz + OVERHEAD);
+		validator.expect_cache_footprint_lt(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
 	TestCase &cache_footprint_planar(size_t sz)
 	{
-		validator.expect_cache_footprint_planar_lt(sz + OVERHEAD);
+		validator.expect_cache_footprint_planar_lt(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
 	TestCase &tmp_size(size_t sz)
 	{
-#ifdef NDEBUG
-		validator.expect_tmp_size_lt(sz + OVERHEAD);
-#endif
+		if (!is_debug)
+			validator.expect_tmp_size_lt(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
 	TestCase &tmp_size_planar(size_t sz)
 	{
-#ifdef NDEBUG
-		validator.expect_tmp_size_planar_lt(sz + OVERHEAD);
-#endif
+		if (!is_debug)
+			validator.expect_tmp_size_planar_lt(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
@@ -52,7 +65,7 @@ struct TestCase {
 
 TEST(GraphAndNodeTest, test_noop)
 {
-	TestCase()
+	TestCase(3)
 		.cache_footprint(640 * 2)
 		.tmp_size(0)
 		.buffering({ 0, 0 })
@@ -64,7 +77,7 @@ TEST(GraphAndNodeTest, test_noop)
 
 TEST(GraphAndNodeTest, test_fewer_planes)
 {
-	TestCase()
+	TestCase(3)
 		.cache_footprint(640 * 4)
 		.cache_footprint_planar(640 * 2)
 		.tmp_size(0)
@@ -77,7 +90,7 @@ TEST(GraphAndNodeTest, test_fewer_planes)
 
 TEST(GraphAndNodeTest, test_more_planes)
 {
-	TestCase()
+	TestCase(5)
 		.cache_footprint(640 * 4)
 		.tmp_size(0)
 		.buffering({ 0, 0 })
@@ -89,7 +102,7 @@ TEST(GraphAndNodeTest, test_more_planes)
 
 TEST(GraphAndNodeTest, test_simple)
 {
-	TestCase()
+	TestCase(4)
 		.cache_footprint(640 * 2)
 		.tmp_size(0)
 		.buffering({ 0, 0 })
@@ -103,7 +116,7 @@ TEST(GraphAndNodeTest, test_simple)
 
 TEST(GraphAndNodeTest, test_multiple_refs)
 {
-	TestCase()
+	TestCase(5)
 		.cache_footprint(640 * 4)
 		.tmp_size(0)
 		.buffering({ 0, 0 })
@@ -118,7 +131,7 @@ TEST(GraphAndNodeTest, test_multiple_refs)
 
 TEST(GraphAndNodeTest, test_subsampled)
 {
-	TestCase()
+	TestCase(5)
 		.cache_footprint((640 * 3 / 2) * 2 * 2)
 		.cache_footprint_planar(640 * 2)
 		.tmp_size(0)
@@ -131,13 +144,11 @@ TEST(GraphAndNodeTest, test_subsampled)
 
 TEST(GraphAndNodeTest, test_masktools_like)
 {
-	const size_t extra_overhead = 1024;
-
-	TestCase()
-		.cache_footprint((640 * 3 / 2) * 8 + 640 * 5 + 320 * 5 * 2 + (640 * 3 / 2) * 2 + extra_overhead)
-		.cache_footprint_planar(640 * 4 + 640 * 4 + 640 + 640 + extra_overhead)
-		.tmp_size(640 * 5 + 320 * 5 * 2 + extra_overhead)
-		.tmp_size_planar(640 * 5 + extra_overhead)
+	TestCase(14)
+		.cache_footprint((640 * 3 / 2) * 8 + 640 * 5 + 320 * 5 * 2 + (640 * 3 / 2) * 2)
+		.cache_footprint_planar(640 * 4 + 640 * 4 + 640 + 640)
+		.tmp_size(640 * 5 + 320 * 5 * 2)
+		.tmp_size_planar(640 * 5)
 		.buffering({ 7, 1 })
 	.run_test({
 		{ "source",  "Source",      {}, { 640, 480, 1, 3, 1, 1 } },
@@ -159,7 +170,7 @@ TEST(GraphAndNodeTest, test_masktools_like)
 
 TEST(GraphAndNodeTest, test_zlib_like)
 {
-	TestCase()
+	TestCase(7)
 		.cache_footprint((640 * 3 / 2) * 16 + 640 * 8 * 2 + 640 * 3)
 		.tmp_size(640 * 8 * 2)
 		.buffering({ 15, 0 })
@@ -176,7 +187,7 @@ TEST(GraphAndNodeTest, test_zlib_like)
 
 TEST(GraphAndNodeTest, test_unresize_like)
 {
-	TestCase()
+	TestCase(6)
 		.cache_footprint(640 + 640 + 320 * 480 + 320 * 240)
 		.tmp_size(640 + 320 * 480)
 		.buffering({ 0, graphengine::BUFFER_MAX })
@@ -192,14 +203,8 @@ TEST(GraphAndNodeTest, test_unresize_like)
 
 TEST(GraphAndNodeTest, test_blocked_in_place)
 {
-#ifdef NDEBUG
-	const size_t extra_overhead = 0;
-#else
-	const size_t extra_overhead = 128;
-#endif
-
-	TestCase()
-		.cache_footprint(640 * 3 * 4 + 320 * 3 * 8 + 320 * 8 + 320 * 4 * 2 + extra_overhead)
+	TestCase(8)
+		.cache_footprint(640 * 3 * 4 + 320 * 3 * 8 + 320 * 8 + 320 * 4 * 2)
 		.tmp_size(320 * 3 * 8)
 		.buffering({ 3, 7 })
 	.run_test({

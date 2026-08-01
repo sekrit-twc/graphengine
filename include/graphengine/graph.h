@@ -261,6 +261,9 @@ public:
 	static GraphImpl *from(Graph *graph) noexcept;
 	static const GraphImpl *from(const Graph *graph) noexcept { return from(const_cast<Graph *>(graph)); }
 
+	/** Check if debug features are enabled. */
+	static bool debug_mode() noexcept;
+
 	/**
 	 * Default constructor.
 	 *

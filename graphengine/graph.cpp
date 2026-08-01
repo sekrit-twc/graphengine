@@ -502,6 +502,8 @@ class GraphImpl::impl : public Simulation::NodeInterface {
 			m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
 
 			sim->reset();
+			sim->set_planar();
+
 			trace_planar(sim, deps[p]);
 			compile_simulation_result(*m_planar_simulation_result[p], *sim, deps[p].first->id(), deps[p].second);
 			m_planar_deps[p] = { deps[p].first->id(), deps[p].second };
@@ -887,6 +889,15 @@ public:
 
 
 GraphImpl *GraphImpl::from(Graph *graph) noexcept { return dynamic_cast<GraphImpl *>(graph); }
+
+bool GraphImpl::debug_mode() noexcept
+{
+#ifdef GRAPHENGINE_ENABLE_GUARD_PAGE
+	return true;
+#else
+	return false;
+#endif
+}
 
 GraphImpl::GraphImpl() TRY : m_impl{ new impl{} } {} CATCH
 GraphImpl::GraphImpl(GraphImpl &&other) noexcept = default;
