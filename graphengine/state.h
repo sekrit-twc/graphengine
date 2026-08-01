@@ -25,6 +25,13 @@ namespace graphengine {
 namespace GRAPHENGINE_IMPL_NAMESPACE {
 
 class Simulation {
+public:
+	struct NodeInterface {
+		virtual ~NodeInterface() = default;
+
+		virtual unsigned node_subsample_h(node_id id, unsigned plane) const = 0;
+	};
+private:
 	struct node_state {
 		size_t context_size;
 		unsigned cursor;
@@ -35,15 +42,15 @@ class Simulation {
 	};
 
 	std::vector<node_state> m_node_state;
+	const NodeInterface *m_nodes;
 	size_t m_scratchpad_size;
-	const Node *m_sink;
 	unsigned m_step;
 	bool m_no_tiling;
 public:
-	explicit Simulation(size_t num_nodes, const Node *sink) :
+	explicit Simulation(size_t num_nodes, const NodeInterface *nodes) :
 		m_node_state(num_nodes),
+		m_nodes{ nodes },
 		m_scratchpad_size{},
-		m_sink{ sink },
 		m_step{ 1 },
 		m_no_tiling{}
 	{}
@@ -60,8 +67,7 @@ public:
 		const node_state &state = m_node_state[id];
 		const node_state &cache_state = m_node_state[cache_id];
 
-		if (cache_id == m_sink->id())
-			row <<= m_sink->subsample_h(plane);
+		row <<= m_nodes->node_subsample_h(id, plane);
 
 		return state.cursor_valid && row < state.cursor && row >= cache_state.cursor_head - cache_state.live_range;
 	}
@@ -109,10 +115,8 @@ public:
 	{
 		node_state &cache_state = m_node_state[cache_id];
 
-		if (cache_id == m_sink->id()) {
-			first <<= m_sink->subsample_h(plane);
-			last <<= m_sink->subsample_h(plane);
-		}
+		first <<= m_nodes->node_subsample_h(cache_id, plane);
+		last <<= m_nodes->node_subsample_h(cache_id, plane);
 
 		cache_state.cursor_head = std::max(cache_state.cursor_head, last);
 		cache_state.live_range = std::max(cache_state.live_range, cache_state.cursor_head - first);

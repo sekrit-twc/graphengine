@@ -176,7 +176,7 @@ public:
 } // namespace
 
 
-class GraphImpl::impl {
+class GraphImpl::impl : public Simulation::NodeInterface {
 	struct SimulationResult {
 		struct node_result {
 			size_t cache_size_bytes[NODE_MAX_PLANES];
@@ -195,7 +195,7 @@ class GraphImpl::impl {
 
 		explicit SimulationResult(size_t num_nodes) : nodes(num_nodes) {}
 
-		constexpr bool ok() const
+		bool ok() const
 		{
 			return cache_footprint < SIZE_MAX && tmp_size < SIZE_MAX && scratchpad_size < SIZE_MAX;
 		}
@@ -231,6 +231,12 @@ class GraphImpl::impl {
 		if (static_cast<size_t>(id) >= m_nodes.size())
 			throw Exception{ Exception::INVALID_NODE, "id out of range" };
 		return node(id);
+	}
+
+	unsigned node_subsample_h(node_id id, unsigned plane) const override
+	{
+		assert(id < m_nodes.size());
+		return m_nodes[id]->subsample_h(plane);
 	}
 
 	std::array<node_dep, NODE_MAX_PLANES> resolve_node_deps(unsigned num_deps, const node_dep_desc deps[]) const
@@ -744,7 +750,7 @@ public:
 					m_planar_simulation_result[p] = std::make_unique<SimulationResult>(m_nodes.size());
 				}
 
-				sim = std::make_unique<Simulation>(m_nodes.size(), node(m_sink_id));
+				sim = std::make_unique<Simulation>(m_nodes.size(), this);
 			} catch (...) {
 				// Delete invalid simulation results.
 				for (unsigned p = 0; p < num_planes; ++p) {
