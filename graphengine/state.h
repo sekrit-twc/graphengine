@@ -45,6 +45,7 @@ private:
 	const NodeInterface *m_nodes;
 	size_t m_scratchpad_size;
 	unsigned m_step;
+	bool m_planar;
 	bool m_no_tiling;
 public:
 	explicit Simulation(size_t num_nodes, const NodeInterface *nodes) :
@@ -52,6 +53,7 @@ public:
 		m_nodes{ nodes },
 		m_scratchpad_size{},
 		m_step{ 1 },
+		m_planar{},
 		m_no_tiling{}
 	{}
 
@@ -60,6 +62,7 @@ public:
 		m_node_state.assign(m_node_state.size(), node_state{});
 		m_scratchpad_size = 0;
 		m_step = 1;
+		m_planar = false;
 	}
 
 	bool is_live(node_id id, node_id cache_id, unsigned row, unsigned plane = 0) const
@@ -88,6 +91,8 @@ public:
 	size_t scratchpad_size() const { return m_scratchpad_size; }
 
 	unsigned step() const { return m_step; }
+
+	bool planar() const { return m_planar; }
 
 	bool no_tiling() const { return m_no_tiling; }
 
@@ -123,6 +128,8 @@ public:
 	}
 
 	void update_step(unsigned step) { m_step = std::max(m_step, step); }
+
+	void set_planar() { m_planar = true; }
 
 	void set_no_tiling() { m_no_tiling = true; }
 };

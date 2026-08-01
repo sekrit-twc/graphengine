@@ -120,7 +120,7 @@ TEST(GraphAndNodeTest, test_subsampled)
 {
 	TestCase()
 		.cache_footprint((640 * 3 / 2) * 2 * 2)
-		.cache_footprint_planar(640 * 3) // Overcounts by one source row due to subsampling alignment.
+		.cache_footprint_planar(640 * 2)
 		.tmp_size(0)
 		.buffering({ 1, 1 })
 	.run_test({
@@ -135,7 +135,7 @@ TEST(GraphAndNodeTest, test_masktools_like)
 
 	TestCase()
 		.cache_footprint((640 * 3 / 2) * 8 + 640 * 5 + 320 * 5 * 2 + (640 * 3 / 2) * 2 + extra_overhead)
-		.cache_footprint_planar(640 * 8 + 640 * 4 + 640 + 640 + extra_overhead)
+		.cache_footprint_planar(640 * 4 + 640 * 4 + 640 + 640 + extra_overhead)
 		.tmp_size(640 * 5 + 320 * 5 * 2 + extra_overhead)
 		.tmp_size_planar(640 * 5 + extra_overhead)
 		.buffering({ 7, 1 })

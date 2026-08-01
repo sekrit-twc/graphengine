@@ -92,10 +92,13 @@ public:
 
 		// Normalize row addresses.
 		first_row <<= m_subsample_h[plane];
-		first_row = first_row - first_row % m_step;
-
 		last_row <<= m_subsample_h[plane];
-		last_row = last_row % m_step ? last_row + (m_step - last_row % m_step) : last_row;
+
+		// Align the row indices to the subsampling ratio.
+		if (!sim->planar()) {
+			first_row = first_row - first_row % m_step;
+			last_row = last_row % m_step ? last_row + (m_step - last_row % m_step) : last_row;
+		}
 
 		sim->update_cursor_range(id(), first_row, last_row);
 		sim->update_live_range(id(), first_row, last_row);
