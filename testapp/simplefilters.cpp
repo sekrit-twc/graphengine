@@ -1,12 +1,14 @@
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <emmintrin.h>
 #include "simplefilters.h"
 
 #ifdef _MSC_VER
-  #include <emmintrin.h>
   static long xlrintf(float x) { return _mm_cvtss_si32(_mm_set_ss(x)); }
   static float xsqrtf(float x) { return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x))); }
 #else
