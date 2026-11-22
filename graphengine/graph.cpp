@@ -358,6 +358,10 @@ class GraphImpl::impl : public Simulation::NodeInterface {
 			if (!sim.is_live_node(id))
 				continue;
 
+			node_result.context_size = (sim.context_size(id) + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
+			node_result.initial_cursor = sim.cursor_min(id);
+			sat_add(result.tmp_size, node_result.context_size);
+
 			unsigned live_rows = sim.live_range(id);
 			if (!live_rows)
 				continue;
@@ -389,10 +393,6 @@ class GraphImpl::impl : public Simulation::NodeInterface {
 				}
 				node_result.cache_mask[p] = mask;
 			}
-
-			node_result.context_size = (sim.context_size(id) + ALIGNMENT_MASK) & ~static_cast<size_t>(ALIGNMENT_MASK);
-			node_result.initial_cursor = sim.cursor_min(id);
-			sat_add(result.tmp_size, node_result.context_size);
 		}
 		sat_add(result.tmp_size, sim.scratchpad_size());
 		result.scratchpad_size = sim.scratchpad_size();
