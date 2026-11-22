@@ -54,6 +54,7 @@ constexpr char SINK[] = "Sink";
 // Built-in access patterns.
 constexpr char GENERATE_FILTER[] = "Generate"; // arg0 = width, arg1 = height, arg2 = bytes_per_sample(1)
 constexpr char POINT_FILTER[] = "Point"; // arg0 = bytes_per_sample
+constexpr char CONTEXT_FILTER[] = "Context"; // arg0 = bytes_per_sample
 constexpr char CONVOLUTION_FILTER[] = "Convolution"; // arg0 = N(3)
 constexpr char COLORSPACE_FILTER[] = "Colorspace";
 constexpr char MERGE_FILTER[] = "Merge";
@@ -85,13 +86,13 @@ public:
 
 	void register_factory(const char *filter_name, filter_factory func);
 
-	void expect_cache_footprint_lt(size_t sz);
+	void expect_cache_footprint_eq(size_t sz);
 
-	void expect_cache_footprint_planar_lt(size_t sz);
+	void expect_cache_footprint_planar_eq(size_t sz);
 
-	void expect_tmp_size_lt(size_t sz);
+	void expect_tmp_size_eq(size_t sz);
 
-	void expect_tmp_size_planar_lt(size_t sz);
+	void expect_tmp_size_planar_eq(size_t sz);
 
 	void expect_buffering_requirement_eq(const unsigned mask[], size_t count);
 

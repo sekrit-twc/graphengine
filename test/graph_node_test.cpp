@@ -26,27 +26,27 @@ struct TestCase {
 
 	TestCase &cache_footprint(size_t sz)
 	{
-		validator.expect_cache_footprint_lt(sz + overhead_size(num_nodes));
+		validator.expect_cache_footprint_eq(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
 	TestCase &cache_footprint_planar(size_t sz)
 	{
-		validator.expect_cache_footprint_planar_lt(sz + overhead_size(num_nodes));
+		validator.expect_cache_footprint_planar_eq(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
 	TestCase &tmp_size(size_t sz)
 	{
 		if (!is_debug)
-			validator.expect_tmp_size_lt(sz + overhead_size(num_nodes));
+			validator.expect_tmp_size_eq(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
 	TestCase &tmp_size_planar(size_t sz)
 	{
 		if (!is_debug)
-			validator.expect_tmp_size_planar_lt(sz + overhead_size(num_nodes));
+			validator.expect_tmp_size_planar_eq(sz + overhead_size(num_nodes));
 		return *this;
 	}
 
@@ -112,6 +112,20 @@ TEST(GraphAndNodeTest, test_simple)
 		{ "clip", "Point",  { { "clip" } } },
 		{ "clip", "Sink",   { { "clip" } } },
 	});
+}
+
+TEST(GraphAndNodeTest, test_context)
+{
+	TestCase(4)
+		.cache_footprint(640 * 2 + 64)
+		.tmp_size(64)
+		.buffering({ 0, 0 })
+		.run_test({
+			{ "clip", "Source",{},{ 640, 480 } },
+			{ "clip", "Context",{ { "clip" } } },
+			{ "clip", "Point",{ { "clip" } } },
+			{ "clip", "Sink",{ { "clip" } } },
+			});
 }
 
 TEST(GraphAndNodeTest, test_multiple_refs)

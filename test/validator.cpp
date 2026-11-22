@@ -94,6 +94,22 @@ public:
 };
 
 
+class ContextFilter : public PointFilter {
+public:
+	static std::unique_ptr<ContextFilter> create(const char *name, const PlaneDescriptor &source_format, const std::vector<unsigned> &args)
+	{
+		unsigned bytes_per_sample = args.size() >= 1 ? args[0] : source_format.bytes_per_sample;
+		return std::make_unique<ContextFilter>(name, source_format, bytes_per_sample);
+	}
+
+	ContextFilter(const char *name, const PlaneDescriptor &source_format, unsigned bytes_per_sample) :
+		PointFilter{ name, source_format, bytes_per_sample }
+	{
+		desc.context_size = 64;
+	}
+};
+
+
 class ConvolutionFilter : public ValidationFilter {
 	unsigned m_kernel_dim;
 	unsigned m_support;
@@ -612,6 +628,7 @@ GraphValidator::GraphValidator() :
 	m_tmp_size_planar{ SIZE_MAX }
 {
 	m_factories[POINT_FILTER] = PointFilter::create;
+	m_factories[CONTEXT_FILTER] = ContextFilter::create;
 	m_factories[CONVOLUTION_FILTER] = ConvolutionFilter::create;
 	m_factories[COLORSPACE_FILTER] = ColorspaceFilter::create;
 	m_factories[MERGE_FILTER] = MergeFilter::create;
@@ -627,22 +644,22 @@ void GraphValidator::register_factory(const char *filter_name, filter_factory fu
 	m_factories[filter_name] = func;
 }
 
-void GraphValidator::expect_cache_footprint_lt(size_t sz)
+void GraphValidator::expect_cache_footprint_eq(size_t sz)
 {
 	m_cache_footprint = sz;
 }
 
-void GraphValidator::expect_cache_footprint_planar_lt(size_t sz)
+void GraphValidator::expect_cache_footprint_planar_eq(size_t sz)
 {
 	m_cache_footprint_planar = sz;
 }
 
-void GraphValidator::expect_tmp_size_lt(size_t sz)
+void GraphValidator::expect_tmp_size_eq(size_t sz)
 {
 	m_tmp_size = sz;
 }
 
-void GraphValidator::expect_tmp_size_planar_lt(size_t sz)
+void GraphValidator::expect_tmp_size_planar_eq(size_t sz)
 {
 	m_tmp_size_planar = sz;
 }
@@ -680,10 +697,14 @@ void GraphValidator::validate(const ScriptStatement *statements, size_t num_stat
 		SCOPED_TRACE("buffering check");
 		do_validate(null_hook, [=](graphengine::Graph *graph)
 		{
-			EXPECT_LE(graph->get_cache_footprint(true), m_cache_footprint);
-			EXPECT_LE(graph->get_cache_footprint(false), m_cache_footprint_planar);
-			EXPECT_LE(graph->get_tmp_size(true), m_tmp_size);
-			EXPECT_LE(graph->get_tmp_size(false), m_tmp_size_planar);
+			if (m_cache_footprint != SIZE_MAX)
+				EXPECT_EQ(graph->get_cache_footprint(true), m_cache_footprint);
+			if (m_cache_footprint_planar != SIZE_MAX)
+				EXPECT_EQ(graph->get_cache_footprint(false), m_cache_footprint_planar);
+			if (m_tmp_size != SIZE_MAX)
+				EXPECT_EQ(graph->get_tmp_size(true), m_tmp_size);
+			if (m_tmp_size_planar != SIZE_MAX)
+				EXPECT_EQ(graph->get_tmp_size(false), m_tmp_size_planar);
 
 			if (!m_buffering.empty()) {
 				graphengine::Graph::BufferingRequirement req = graph->get_buffering_requirement();
